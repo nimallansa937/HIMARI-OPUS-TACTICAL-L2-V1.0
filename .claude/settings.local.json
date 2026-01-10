@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(unzip:*)",
+      "Bash(grep:*)",
+      "Bash(python3:*)",
+      "Bash(find:*)",
+      "Bash(while read dir)",
+      "Bash(do [ ! -f \"$dir/__init__.py\" ])",
+      "Bash(echo:*)",
+      "Bash(done)",
+      "Bash(for dir in */)",
+      "Bash(do [ -f \"$dir/__init__.py\" ])",
+      "Bash(xargs ls:*)",
+      "Bash(wc:*)",
+      "Bash(python scripts/verify_training_data.py:*)",
+      "Bash(python scripts/preprocess_training_data.py:*)",
+      "Bash(python scripts/launch_training.py:*)",
+      "Bash(python:*)",
+      "Bash(tar:*)",
+      "Bash(dir:*)"
+    ]
+  }
+}

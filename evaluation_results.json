@@ -1,0 +1,13 @@
+{
+  "evaluation_date": "2026-01-04",
+  "validation_samples": 10361,
+  "results": [
+    {"rank": 1, "model": "FLAG-TRADER", "accuracy": 61.42, "params": 87955971, "status": "BEST"},
+    {"rank": 2, "model": "CGDT", "accuracy": 55.48, "params": 4822276, "status": "Good"},
+    {"rank": 3, "model": "CQL", "accuracy": 20.89, "params": 116995, "status": "Poor"},
+    {"rank": 4, "model": "BaselineMLP", "accuracy": 20.81, "params": 18691, "status": "Baseline"}
+  ],
+  "best_model": "FLAG-TRADER",
+  "best_accuracy": 61.42,
+  "recommendation": "Deploy FLAG-TRADER to production"
+}
