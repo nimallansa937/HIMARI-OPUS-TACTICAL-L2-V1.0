@@ -98,6 +98,10 @@ class TransformerA2CTrainer:
         
         # Setup logging
         self._setup_logging()
+        
+        # Scheduling
+        self.next_val_step = config.val_frequency
+        self.next_log_step = 10000
     
     def _setup_logging(self):
         logging.basicConfig(
@@ -412,7 +416,9 @@ class TransformerA2CTrainer:
             self.global_step += self.config.rollout_steps
             
             # Logging
-            if self.global_step % 10000 == 0:
+            # Logging
+            if self.global_step >= self.next_log_step:
+                self.next_log_step += 10000
                 train_sharpe = np.mean(list(self.train_sharpes)[-10:]) if self.train_sharpes else 0
                 logger.info(
                     f"Step {self.global_step:,}/{self.config.max_steps:,} | "
@@ -429,7 +435,8 @@ class TransformerA2CTrainer:
                     })
             
             # Validation check
-            if self.global_step % self.config.val_frequency == 0:
+            if self.global_step >= self.next_val_step:
+                self.next_val_step += self.config.val_frequency
                 val_sharpe = self.validate()
                 train_sharpe = np.mean(list(self.train_sharpes)[-20:]) if self.train_sharpes else 0
                 
