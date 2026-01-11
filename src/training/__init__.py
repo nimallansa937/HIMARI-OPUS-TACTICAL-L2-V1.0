@@ -128,6 +128,20 @@ from .transformer_a2c_trainer import (
     train_transformer_a2c
 )
 
+# Walk-Forward Optimization
+from .walk_forward_optimizer import (
+    WFOConfig,
+    WFOWindow,
+    WalkForwardOptimizer,
+    run_wfo_training
+)
+
+# Synthetic Crash Generator
+from .synthetic_crash_generator import (
+    CrashScenarioConfig,
+    SyntheticCrashGenerator
+)
+
 __all__ = [
     # K1: Curriculum
     'CurriculumDataset',
@@ -198,4 +212,12 @@ __all__ = [
     # Transformer-A2C Trainer
     'TransformerA2CTrainer',
     'train_transformer_a2c',
+    # Walk-Forward Optimization
+    'WFOConfig',
+    'WFOWindow',
+    'WalkForwardOptimizer',
+    'run_wfo_training',
+    # Synthetic Crash Generator
+    'CrashScenarioConfig',
+    'SyntheticCrashGenerator',
 ]
