@@ -219,6 +219,109 @@ class SortinoWithDrawdownPenalty(SimpleSortinoReward):
         self._current_equity = 1.0
 
 
+class SortinoWithTransactionCosts(SimpleSortinoReward):
+    """
+    Sortino reward with realistic transaction costs.
+
+    Transaction costs include:
+    - Trading fee (e.g., 0.1% per trade on Binance)
+    - Slippage estimate (e.g., 0.05% for BTC)
+
+    This gives realistic performance estimates.
+    """
+
+    def __init__(
+        self,
+        target_return: float = 0.0,
+        downside_penalty: float = 2.0,
+        scale: float = 100.0,
+        trading_fee: float = 0.001,    # 0.1% per trade (Binance taker fee)
+        slippage: float = 0.0005,      # 0.05% slippage estimate
+    ):
+        super().__init__(target_return, downside_penalty, scale)
+        self.trading_fee = trading_fee
+        self.slippage = slippage
+        self.total_cost = trading_fee + slippage  # 0.15% per trade
+        self._prev_action = 0  # Start FLAT
+        self._trade_count = 0
+        self._total_costs = 0.0
+        self._gross_returns_buffer = []  # Returns before costs
+
+    def compute(
+        self,
+        action: int,
+        market_return: float,
+        confidence: float,
+    ) -> float:
+        """
+        Compute reward with transaction costs deducted.
+        """
+        # Convert action to position
+        position = {0: 0.0, 1: 1.0, 2: -1.0}[action]
+
+        # Position-weighted return (gross)
+        gross_return = position * market_return
+        self._gross_returns_buffer.append(gross_return)
+
+        # Check if we traded (position changed)
+        traded = (action != self._prev_action)
+        self._prev_action = action
+
+        # Apply transaction cost if traded
+        net_return = gross_return
+        if traded and action != 0:  # Entering a position
+            net_return -= self.total_cost
+            self._trade_count += 1
+            self._total_costs += self.total_cost
+        elif traded and action == 0:  # Exiting a position
+            net_return -= self.total_cost
+            self._trade_count += 1
+            self._total_costs += self.total_cost
+
+        # Sortino-style asymmetric reward on NET return
+        excess = net_return - self.target_return
+
+        if excess >= 0:
+            reward = excess * self.scale
+        else:
+            reward = excess * self.scale * self.downside_penalty
+
+        self._returns_buffer.append(net_return)
+        return reward
+
+    def get_gross_return(self) -> float:
+        """Total return before costs."""
+        if len(self._gross_returns_buffer) == 0:
+            return 0.0
+        return float(np.sum(self._gross_returns_buffer))
+
+    def get_net_return(self) -> float:
+        """Total return after costs."""
+        return self.get_total_return()
+
+    def get_trade_count(self) -> int:
+        """Number of trades executed."""
+        return self._trade_count
+
+    def get_total_costs(self) -> float:
+        """Total transaction costs paid."""
+        return self._total_costs
+
+    def get_cost_drag(self) -> float:
+        """Cost as percentage of gross return."""
+        gross = self.get_gross_return()
+        if abs(gross) < 1e-8:
+            return 0.0
+        return self._total_costs / gross * 100
+
+    def reset(self):
+        super().reset()
+        self._prev_action = 0
+        self._trade_count = 0
+        self._total_costs = 0.0
+        self._gross_returns_buffer = []
+
+
 # ==============================================================================
 # Reward Function Factory
 # ==============================================================================
@@ -241,5 +344,7 @@ def create_reward_function(
         return SimpleSortinoReward(**kwargs)
     elif reward_type == "sortino_drawdown":
         return SortinoWithDrawdownPenalty(**kwargs)
+    elif reward_type == "sortino_with_costs":
+        return SortinoWithTransactionCosts(**kwargs)
     else:
         raise ValueError(f"Unknown reward type: {reward_type}")
