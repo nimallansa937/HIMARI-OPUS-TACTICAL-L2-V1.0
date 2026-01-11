@@ -255,7 +255,15 @@ class ActorHead(nn.Module):
         
         # Small initialization for output layer
         nn.init.orthogonal_(self.network[-1].weight, gain=0.01)
-        nn.init.zeros_(self.network[-1].bias)
+        # CRITICAL FIX: Initialize bias to discourage FLAT (action 0)
+        # This breaks the symmetry and encourages exploration of LONG/SHORT
+        # Without this, the model converges to FLAT due to zero-risk preference
+        with torch.no_grad():
+            self.network[-1].bias.data = torch.tensor([
+                -0.5,  # FLAT: slight penalty in logits
+                 0.2,  # LONG: slight bonus
+                 0.2,  # SHORT: slight bonus
+            ])
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """

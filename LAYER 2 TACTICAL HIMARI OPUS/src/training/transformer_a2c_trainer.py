@@ -277,11 +277,20 @@ class TransformerA2CTrainer:
         )
         self.critic_optimizer.step()
         
+        # Log action probabilities from this batch to detect collapse early
+        with torch.no_grad():
+            batch_probs = F.softmax(self.model.actor(self.model.encoder(states)), dim=-1)
+            mean_probs = batch_probs.mean(dim=0)
+
         return {
             "actor_loss": actor_loss.item(),
             "critic_loss": critic_loss_fresh.item(),
             "entropy": entropy.mean().item(),
+            "entropy_coef": current_entropy_coef,
             "total_loss": total_loss.item(),
+            "prob_flat": mean_probs[0].item(),
+            "prob_long": mean_probs[1].item(),
+            "prob_short": mean_probs[2].item(),
         }
     
     @torch.no_grad()
@@ -471,6 +480,12 @@ class TransformerA2CTrainer:
                     f"Train Sharpe: {train_sharpe:.4f} | "
                     f"Actor Loss: {losses['actor_loss']:.4f} | "
                     f"Critic Loss: {losses['critic_loss']:.4f}"
+                )
+                # Log action probabilities to detect early collapse
+                logger.info(
+                    f"  Policy probs: FLAT={losses['prob_flat']:.3f}, "
+                    f"LONG={losses['prob_long']:.3f}, SHORT={losses['prob_short']:.3f} | "
+                    f"Entropy: {losses['entropy']:.4f} (coef={losses['entropy_coef']:.4f})"
                 )
                 
                 if self.use_wandb:
