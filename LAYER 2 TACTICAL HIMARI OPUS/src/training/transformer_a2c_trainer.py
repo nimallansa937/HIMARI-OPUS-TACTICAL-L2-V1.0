@@ -21,7 +21,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 from src.models.transformer_a2c import TransformerA2C, TransformerA2CConfig
-from src.training.sortino_reward import SimpleSortinoReward
+from src.training.sortino_reward import SimpleSortinoReward, SortinoWithTransactionCosts
 
 # Optional: wandb for logging
 try:
@@ -53,6 +53,10 @@ class TransformerA2CTrainer:
         output_dir: str = "./output/transformer_a2c",
         use_wandb: bool = False,
         wandb_project: str = "himari-layer2-transformer-a2c",
+        # Transaction cost parameters
+        use_transaction_costs: bool = True,
+        trading_fee: float = 0.001,      # 0.1% per trade (Binance taker)
+        slippage: float = 0.0005,        # 0.05% slippage estimate
     ):
         self.config = config
         self.train_env = train_env
@@ -79,12 +83,30 @@ class TransformerA2CTrainer:
             weight_decay=config.weight_decay,
         )
         
-        # Reward function
-        self.reward_fn = SimpleSortinoReward(
-            target_return=0.0,
-            downside_penalty=2.0,
-            scale=100.0,
-        )
+        # Reward function - use transaction costs to discourage over-trading
+        self.use_transaction_costs = use_transaction_costs
+        self.trading_fee = trading_fee
+        self.slippage = slippage
+
+        if use_transaction_costs:
+            self.reward_fn = SortinoWithTransactionCosts(
+                target_return=0.0,
+                downside_penalty=2.0,
+                scale=100.0,
+                trading_fee=trading_fee,
+                slippage=slippage,
+            )
+            logger.info(
+                f"Using SortinoWithTransactionCosts: "
+                f"fee={trading_fee*100:.2f}%, slippage={slippage*100:.2f}%"
+            )
+        else:
+            self.reward_fn = SimpleSortinoReward(
+                target_return=0.0,
+                downside_penalty=2.0,
+                scale=100.0,
+            )
+            logger.info("Using SimpleSortinoReward (no transaction costs)")
         
         # Tracking
         self.global_step = 0
@@ -157,7 +179,17 @@ class TransformerA2CTrainer:
                 # Calculate and store training Sharpe for completed episode
                 episode_sharpe = self.reward_fn.get_episode_sharpe()
                 self.train_sharpes.append(episode_sharpe)
-                logger.debug(f"Episode complete: train_sharpe={episode_sharpe:.4f}")
+
+                # Log trade count if using transaction costs
+                if self.use_transaction_costs and hasattr(self.reward_fn, 'get_trade_count'):
+                    trade_count = self.reward_fn.get_trade_count()
+                    total_costs = self.reward_fn.get_total_costs()
+                    logger.debug(
+                        f"Episode complete: train_sharpe={episode_sharpe:.4f}, "
+                        f"trades={trade_count}, costs={total_costs*100:.3f}%"
+                    )
+                else:
+                    logger.debug(f"Episode complete: train_sharpe={episode_sharpe:.4f}")
 
                 state, _ = env.reset()
                 self.reward_fn.reset()
@@ -299,8 +331,17 @@ class TransformerA2CTrainer:
         self.model.eval()
 
         state, _ = self.val_env.reset()
-        reward_fn = SimpleSortinoReward(scale=100.0)
-        
+
+        # Use same reward function type as training for consistency
+        if self.use_transaction_costs:
+            reward_fn = SortinoWithTransactionCosts(
+                scale=100.0,
+                trading_fee=self.trading_fee,
+                slippage=self.slippage,
+            )
+        else:
+            reward_fn = SimpleSortinoReward(scale=100.0)
+
         # Track action distribution to detect policy collapse
         action_counts = {0: 0, 1: 0, 2: 0}  # FLAT, LONG, SHORT
 
@@ -329,13 +370,28 @@ class TransformerA2CTrainer:
             f"total_return={reward_fn.get_total_return():.4f}, "
             f"max_dd={reward_fn.get_max_drawdown():.4f}"
         )
+
+        # Log transaction cost metrics if applicable
+        if self.use_transaction_costs and hasattr(reward_fn, 'get_trade_count'):
+            trade_count = reward_fn.get_trade_count()
+            total_costs = reward_fn.get_total_costs()
+            gross_return = reward_fn.get_gross_return()
+            net_return = reward_fn.get_net_return()
+            avg_hold = total_actions / max(trade_count, 1)  # Average bars per trade
+            logger.info(
+                f"Trading metrics: trades={trade_count}, "
+                f"avg_hold={avg_hold:.1f} bars ({avg_hold*5:.0f} min), "
+                f"gross={gross_return*100:.2f}%, net={net_return*100:.2f}%, "
+                f"costs={total_costs*100:.3f}%"
+            )
+
         # Log action distribution to detect collapse
         logger.info(
             f"Action distribution: FLAT={action_counts[0]/total_actions*100:.1f}%, "
             f"LONG={action_counts[1]/total_actions*100:.1f}%, "
             f"SHORT={action_counts[2]/total_actions*100:.1f}%"
         )
-        
+
         # Warn if policy is collapsing to single action
         max_action_pct = max(action_counts.values()) / total_actions
         if max_action_pct > 0.9:
@@ -565,10 +621,14 @@ def train_transformer_a2c(
     output_dir: str = "./output/transformer_a2c",
     checkpoint_path: Optional[str] = None,
     use_wandb: bool = False,
+    # Transaction cost parameters
+    use_transaction_costs: bool = True,
+    trading_fee: float = 0.001,
+    slippage: float = 0.0005,
 ) -> Optional[Dict]:
     """
     Train Transformer-A2C model.
-    
+
     Args:
         train_env: Training environment
         val_env: Validation environment
@@ -577,12 +637,15 @@ def train_transformer_a2c(
         output_dir: Directory for checkpoints
         checkpoint_path: Optional checkpoint to resume from
         use_wandb: Whether to use Weights & Biases logging
-        
+        use_transaction_costs: Whether to include transaction costs in reward
+        trading_fee: Trading fee per trade (default 0.1%)
+        slippage: Slippage estimate per trade (default 0.05%)
+
     Returns:
         Best checkpoint info
     """
     config = config or TransformerA2CConfig()
-    
+
     trainer = TransformerA2CTrainer(
         config=config,
         train_env=train_env,
@@ -590,9 +653,12 @@ def train_transformer_a2c(
         device=device,
         output_dir=output_dir,
         use_wandb=use_wandb,
+        use_transaction_costs=use_transaction_costs,
+        trading_fee=trading_fee,
+        slippage=slippage,
     )
-    
+
     if checkpoint_path:
         trainer.load_checkpoint(checkpoint_path)
-    
+
     return trainer.train()
