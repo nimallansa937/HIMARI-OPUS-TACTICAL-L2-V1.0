@@ -1,0 +1,17 @@
+{
+  "symbols": [
+    "BTC/USDT",
+    "ETH/USDT"
+  ],
+  "num_samples": 103604,
+  "feature_dim": 60,
+  "label_distribution": {
+    "SELL": 20637,
+    "HOLD": 61755,
+    "BUY": 21212
+  },
+  "forward_periods": 5,
+  "threshold": 0.002,
+  "preprocessing_date": "2026-01-03T00:33:40.444767",
+  "feature_extraction_method": "Simplified"
+}

@@ -1,0 +1,38 @@
+# HIMARI Layer 2 - Part N: Interpretability Framework Configuration
+# 6 Methods: N1-N6
+
+interpretability:
+  # N1: Feature Attribution (SHAP/IG)
+  attribution:
+    method: "integrated_gradients" # or "shap"
+    baseline: "zero"
+    steps: 50
+
+  # N2: Decision Explanation
+  decision_explainer:
+    enabled: true
+    top_features: 5
+    threshold: 0.1
+
+  # N3: Counterfactual Analysis
+  counterfactuals:
+    enabled: true
+    n_counterfactuals: 3
+
+  # N4: Attention Visualization
+  attention:
+    enabled: true
+    layer: -1 # Last layer
+    head: "all"
+
+  # N5: Rule Extraction
+  rule_extraction:
+    enabled: true
+    max_rules: 10
+    min_support: 0.1
+
+  # N6: Confidence Calibration Analysis
+  calibration:
+    n_bins: 10
+    ece_warning_threshold: 0.10
+    mce_warning_threshold: 0.15

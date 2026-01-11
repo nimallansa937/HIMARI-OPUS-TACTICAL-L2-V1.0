@@ -1,0 +1,75 @@
+# HIMARI Layer 2 - ARM64 Docker Image
+# Target: Lambda Labs GH200 (96GB) @ $1.49/hr
+# Architecture: ARM64 (aarch64)
+
+FROM nvcr.io/nvidia/pytorch:24.01-py3
+
+# Metadata
+LABEL maintainer="HIMARI OPUS 2 Team"
+LABEL description="Layer 2 Tactical Decision Engine - ARM64 (GH200)"
+LABEL version="3.0"
+
+# Environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH="${CUDA_HOME}/bin:${PATH}"
+ENV LD_LIBRARY_PATH="${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}"
+
+# System dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    wget \
+    curl \
+    vim \
+    htop \
+    tmux \
+    redis-server \
+    libhdf5-dev \
+    libopenblas-dev \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create working directory
+WORKDIR /app
+
+# Copy requirements
+COPY requirements_v3.txt /app/requirements.txt
+
+# Upgrade pip
+RUN pip install --upgrade pip wheel setuptools
+
+# Install PyTorch for ARM64
+RUN pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0
+
+# Install TA-Lib (system library required)
+RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz && \
+    tar -xzf ta-lib-0.4.0-src.tar.gz && \
+    cd ta-lib/ && \
+    ./configure --prefix=/usr && \
+    make && \
+    make install && \
+    cd .. && \
+    rm -rf ta-lib ta-lib-0.4.0-src.tar.gz
+
+# Install Python dependencies
+RUN pip install -r requirements.txt
+
+# Install Flash Attention 2 for ARM64 (may require compilation)
+RUN pip install flash-attn --no-build-isolation || echo "Flash Attention install failed - will use fallback"
+
+# Copy source code
+COPY . /app
+
+# Expose ports
+# 8000: API server
+# 6379: Redis
+# 7474: Neo4j (optional)
+EXPOSE 8000 6379 7474
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import torch; assert torch.cuda.is_available()" || exit 1
+
+# Default command
+CMD ["bash"]

@@ -1,0 +1,90 @@
+# ============================================================================
+# HIMARI Layer 2 Preprocessing Configuration
+# Version: 5.0
+# ============================================================================
+
+preprocessing:
+  # A1: Extended Kalman Filter
+  ekf:
+    state_dim: 4
+    measurement_dim: 2
+    process_noise: 0.001
+    measurement_noise: 0.01
+    dt: 1.0
+    use_faux_riccati: true
+    vol_mean_reversion: 0.1
+    vol_long_run: 0.02
+    adaptive_Q: true
+    adaptive_R: true
+
+  # A2: Conversational Autoencoders
+  cae:
+    latent_dim: 32
+    hidden_dim: 128
+    input_dim: 60
+    kl_weight: 0.1
+    dropout: 0.1
+    seq_len: 24
+    n_heads: 4
+    n_layers: 2
+    model_path: "models/cae_v5.pt"
+
+  # A3: Frequency Domain Normalization
+  freq_norm:
+    window_size: 256
+    n_freq_components: 32
+    adapt_rate: 0.1
+    preserve_dc: true
+    window_type: "hann"
+
+  # A4: TimeGAN Augmentation (offline)
+  timegan:
+    seq_len: 24
+    hidden_dim: 128
+    latent_dim: 64
+    num_layers: 3
+    epochs: 200
+    batch_size: 64
+    multiplier: 10
+
+  # A5: Tab-DDPM Diffusion (offline)
+  tab_ddpm:
+    hidden_dim: 256
+    n_layers: 4
+    n_timesteps: 1000
+    epochs: 100
+    tail_threshold: 5.0
+    tail_weight: 5.0
+    n_tail_samples: 1000
+
+  # A6: VecNormalize
+  vec_normalize:
+    clip_obs: 10.0
+    clip_reward: 10.0
+    gamma: 0.99
+    epsilon: 1.0e-8
+
+  # A7: Orthogonal Initialization
+  initialization:
+    type: "orthogonal"
+    gain: 1.0
+
+  # A8: Online Augmentation
+  online_augment:
+    jitter_std: 0.01
+    time_warp_prob: 0.3
+    time_warp_sigma: 0.2
+    feature_mask_prob: 0.05
+    regime_adaptive: true
+    min_augment_scale: 0.1
+    max_augment_scale: 1.0
+
+# Pipeline settings
+pipeline:
+  use_ekf: true
+  use_cae: false # Requires trained model
+  use_freq_norm: true
+  use_vec_norm: true
+  use_online_augment: true
+  device: "cuda"
+  feature_dim: 60

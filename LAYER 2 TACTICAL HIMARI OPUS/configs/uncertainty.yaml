@@ -1,0 +1,60 @@
+# HIMARI Layer 2 - Part F: Uncertainty Quantification Configuration
+# 8 Methods: F1-F8
+
+uncertainty:
+  device: "cpu"
+  use_ct_ssf: true
+  use_cptc: true
+  use_temperature_scaling: true
+  use_deep_ensemble: true
+  use_mc_dropout: true
+  use_knn_ood: true
+  use_predictive: true
+
+  # F1: CT-SSF Latent Conformal
+  ct_ssf:
+    latent_dim: 64
+    n_calibration: 500
+    alpha: 0.10
+    attention_temp: 1.0
+    surrogate_lr: 0.01
+    surrogate_steps: 50
+
+  # F2: CPTC Regime Change Points
+  cptc:
+    base_alpha: 0.10
+    regime_expansion: 2.0
+    decay_rate: 0.95
+    lookback_window: 100
+    change_threshold: 2.0
+    min_samples_per_regime: 20
+
+  # F3: Temperature Scaling
+  temperature_scaling:
+    initial_temp: 1.5
+    min_temp: 0.1
+    max_temp: 10.0
+    n_bins: 15
+
+  # F4: Deep Ensemble
+  deep_ensemble:
+    n_members: 5
+    hidden_dim: 128
+    dropout: 0.1
+
+  # F5: MC Dropout
+  mc_dropout:
+    n_samples: 30
+    dropout_rate: 0.2
+
+  # F7: k-NN OOD
+  knn_ood:
+    k: 10
+    distance_threshold: 3.0
+    use_mahalanobis: true
+
+  # F8: Predictive Uncertainty
+  predictive:
+    lookback: 50
+    horizon: 5
+    ar_order: 3

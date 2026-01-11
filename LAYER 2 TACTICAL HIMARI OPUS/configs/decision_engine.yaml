@@ -1,0 +1,89 @@
+# ============================================================================
+# HIMARI Layer 2 - Decision Engine Configuration
+# Complete configuration for decision engine subsystem (10 methods)
+# ============================================================================
+
+decision_engine:
+  device: "cuda"
+  feature_dim: 256
+  target_sharpe: 2.0
+  deterministic: false
+
+  # D1: FLAG-TRADER
+  flag_trader:
+    enabled: false # Requires GPU + transformers
+    model_name: "HuggingFaceTB/SmolLM2-135M-Instruct"
+    lora_r: 16
+    lora_alpha: 32
+    use_rslora: true
+    temperature: 0.7
+
+  # D2: Critic-Guided DT
+  cgdt:
+    enabled: false # Requires training
+    context_length: 100
+    hidden_dim: 256
+    n_heads: 4
+    n_layers: 3
+    filter_threshold: 0.3
+
+  # D3: CQL Agent
+  cql:
+    enabled: true
+    feature_dim: 256
+    hidden_dim: 256
+    alpha: 1.0
+    min_q_weight: 5.0
+
+  # D4: rsLoRA
+  rslora:
+    rank: 16
+    alpha: 32
+    dropout: 0.1
+    target_modules:
+      - q_proj
+      - k_proj
+      - v_proj
+      - o_proj
+
+  # D5: PPO-LSTM
+  ppo:
+    enabled: true
+    hidden_dim: 512
+    lstm_layers: 2
+    clip_epsilon: 0.2
+    entropy_coef: 0.01
+
+  # D6: SAC Agent
+  sac:
+    enabled: true
+    hidden_dim: 256
+    auto_alpha: true
+    tau: 0.005
+
+  # D7: Sharpe-Weighted Voting
+  ensemble:
+    sharpe_window: 30
+    weight_smoothing: 0.9
+    min_sharpe: 0.1
+
+  # D8: Disagreement Scaling
+  disagreement:
+    full_confidence_threshold: 0.2
+    zero_confidence_threshold: 0.7
+    abstain_threshold: 0.8
+
+  # D9: Return Conditioning
+  return_conditioning:
+    crisis_target: 0.5
+    bearish_target: 1.0
+    neutral_target: 2.0
+    bullish_target: 2.5
+
+  # D10: FinRL-DT Pipeline
+  finrl_dt:
+    batch_size: 64
+    learning_rate: 1e-4
+    context_length: 100
+    gamma: 0.99
+    max_grad_norm: 1.0

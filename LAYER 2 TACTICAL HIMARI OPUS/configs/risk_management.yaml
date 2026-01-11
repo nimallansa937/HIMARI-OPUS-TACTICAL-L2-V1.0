@@ -1,0 +1,45 @@
+# HIMARI Layer 2 - Part H: RSS Risk Management Configuration
+# 6 Methods: H1-H6
+
+risk_management:
+  # H1: Kelly Criterion Position Sizing
+  kelly:
+    max_fraction: 0.20
+    half_kelly: true
+    min_history: 30
+
+  # H2: Volatility Targeting
+  volatility_targeting:
+    target_vol: 0.15 # 15% annualized
+    lookback: 20
+    max_leverage: 2.0
+
+  # H3: Drawdown Control
+  drawdown_control:
+    thresholds:
+      - drawdown: 0.05
+        multiplier: 1.0
+      - drawdown: 0.10
+        multiplier: 0.5
+      - drawdown: 0.15
+        multiplier: 0.25
+      - drawdown: 0.20
+        multiplier: 0.0
+
+  # H4: Regime-Based Scaling
+  regime_scaling:
+    trending_up: 1.0
+    trending_down: 0.5
+    ranging: 0.75
+    high_volatility: 0.5
+    crisis: 0.0
+
+  # H5: Correlation Monitoring
+  correlation:
+    max_portfolio_correlation: 0.7
+    diversification_penalty: 0.1
+
+  # H6: VaR/CVaR Limits
+  var_limits:
+    daily_var_limit: 0.02
+    cvar_confidence: 0.99

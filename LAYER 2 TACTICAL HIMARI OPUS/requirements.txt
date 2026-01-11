@@ -1,0 +1,31 @@
+# HIMARI Layer 2 V1 - Complete Package Requirements
+# Install with: pip install -r requirements.txt
+
+# Core Dependencies
+torch>=2.0.0
+numpy>=1.24.0
+pandas>=2.0.0
+pyyaml>=6.0
+
+# Monitoring & Logging
+wandb>=0.15.0
+loguru>=0.7.0
+
+# Data Processing
+scipy>=1.10.0
+scikit-learn>=1.3.0
+
+# RL Environment
+gym>=0.26.0
+
+# Preprocessing (EKF)
+filterpy>=1.4.5
+
+# Optional (for development & visualization)
+# matplotlib>=3.7.0
+# seaborn>=0.12.0
+# tensorboard>=2.13.0
+
+# Note: All models (BaselineMLP, CQL, PPO-LSTM, CGDT, FLAG-TRADER)
+# work with the core dependencies above.
+# Additional libraries for preprocessing and RL environments included.
