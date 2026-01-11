@@ -1,0 +1,16 @@
+{
+  "total_steps": 645,
+  "total_epochs": 1,
+  "elapsed_hours": 0.0006044279204474555,
+  "steps_per_second": 296.42354465364593,
+  "train_loss_recent_avg": 1.220718255943558,
+  "train_accuracy_recent_avg": 0.4134645897832817,
+  "learning_rate_recent_avg": 4.9500000000000004e-05,
+  "val_loss_recent_avg": 1.058094200204238,
+  "val_accuracy_recent_avg": 0.466988416988417,
+  "acc_sell_recent_avg": 0.5674318507890961,
+  "acc_hold_recent_avg": 0.5484234234234234,
+  "acc_buy_recent_avg": 0.11811982464685826,
+  "epoch_recent_avg": 0.5,
+  "epoch_duration_recent_avg": 1.0545530915260315
+}

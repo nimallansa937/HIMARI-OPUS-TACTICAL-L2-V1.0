@@ -1,0 +1,61 @@
+# HIMARI Layer 2 - Inference Configuration
+# Version: 3.0
+
+# Optimized settings for production inference (A10 GPU)
+
+# =============================================================================
+# GLOBAL SETTINGS
+# =============================================================================
+device: "cuda"
+precision: "fp16" # FP16 inference for 2x speedup
+batch_size: 1 # Real-time inference
+
+# =============================================================================
+# MODEL LOADING
+# =============================================================================
+model_paths:
+  ppo_lstm: "data/models/ppo_lstm/best_model.pth"
+  decision_transformer: "data/models/decision_transformer/best_model.pth"
+  sac: "data/models/sac/best_model.pth"
+
+# Use ONNX for faster inference
+use_onnx: true
+onnx_paths:
+  ppo_lstm: "data/models/ppo_lstm/model.onnx"
+  decision_transformer: "data/models/decision_transformer/model.onnx"
+
+# =============================================================================
+# ENSEMBLE SETTINGS
+# =============================================================================
+ensemble:
+  voting_window: 30 # days for Sharpe calculation
+  disagreement_threshold: 0.3
+  min_confidence: 0.6
+
+# =============================================================================
+# PREPROCESSING
+# =============================================================================
+preprocessing:
+  kalman_process_noise: 1.0e-5
+  kalman_measurement_noise: 0.01
+  vecnorm_clip: 10.0
+
+# =============================================================================
+# SAFETY LIMITS
+# =============================================================================
+safety:
+  max_leverage: 3.0
+  max_position_concentration: 0.20
+  daily_drawdown_limit: 0.02
+  daily_stop_loss: 0.02
+
+# =============================================================================
+# PERFORMANCE TARGETS
+# =============================================================================
+latency:
+  target_ms: 50
+  critical_ms: 100
+
+cache:
+  enable_feature_cache: true
+  cache_ttl_seconds: 60

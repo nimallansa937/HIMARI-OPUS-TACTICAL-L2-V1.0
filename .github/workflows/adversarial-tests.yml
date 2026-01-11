@@ -1,0 +1,178 @@
+# L2-5 Adversarial Stress Testing - GitHub Actions CI/CD
+#
+# Schedules:
+# - Monthly full suite (1st of month, 2am UTC)
+# - Weekly quick suite (Sunday, 3am UTC)
+# - On-demand via workflow_dispatch
+#
+# For Vast.ai GPU runs, this triggers a local runner or uses self-hosted
+
+name: L2-5 Adversarial Stress Tests
+
+on:
+    schedule:
+        # Monthly full run - 1st of each month at 2am UTC
+        - cron: "0 2 1 * *"
+        # Weekly quick run - Sunday at 3am UTC
+        - cron: "0 3 * * 0"
+
+    workflow_dispatch:
+        inputs:
+            mode:
+                description: "Test mode"
+                required: true
+                default: "quick"
+                type: choice
+                options:
+                    - full
+                    - quick
+                    - custom
+            scenarios:
+                description: "Number of scenarios (custom mode)"
+                required: false
+                default: "500"
+                type: string
+            reason:
+                description: "Reason for run"
+                required: false
+                default: "manual trigger"
+                type: string
+
+env:
+    PYTHON_VERSION: "3.11"
+    REPORTS_DIR: "reports/adversarial"
+
+jobs:
+    determine-mode:
+        runs-on: ubuntu-latest
+        outputs:
+            mode: ${{ steps.set-mode.outputs.mode }}
+            scenarios: ${{ steps.set-mode.outputs.scenarios }}
+        steps:
+            - name: Determine run mode
+              id: set-mode
+              run: |
+                  if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+                    echo "mode=${{ github.event.inputs.mode }}" >> $GITHUB_OUTPUT
+                    echo "scenarios=${{ github.event.inputs.scenarios }}" >> $GITHUB_OUTPUT
+                  elif [ "$(date +%d)" == "01" ]; then
+                    echo "mode=full" >> $GITHUB_OUTPUT
+                    echo "scenarios=10000" >> $GITHUB_OUTPUT
+                  else
+                    echo "mode=quick" >> $GITHUB_OUTPUT
+                    echo "scenarios=1000" >> $GITHUB_OUTPUT
+                  fi
+
+    run-adversarial-tests:
+        needs: determine-mode
+        runs-on: self-hosted # Use self-hosted runner with GPU for full runs
+        # Alternative: ubuntu-latest for quick runs without GPU
+        timeout-minutes: 2880 # 48 hours for full runs
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ env.PYTHON_VERSION }}
+
+            - name: Cache pip packages
+              uses: actions/cache@v4
+              with:
+                  path: ~/.cache/pip
+                  key: ${{ runner.os }}-pip-adversarial-${{ hashFiles('**/requirements.txt') }}
+
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install numpy pyyaml pytest
+                  pip install -e "LAYER 2 TACTICAL HIMARI OPUS"
+
+            - name: Run adversarial tests
+              id: run-tests
+              working-directory: "LAYER 2 TACTICAL HIMARI OPUS"
+              run: |
+                  python scripts/run_adversarial_tests.py \
+                    --mode ${{ needs.determine-mode.outputs.mode }} \
+                    --output-dir ${{ env.REPORTS_DIR }} \
+                    ${{ needs.determine-mode.outputs.mode == 'custom' && format('--scenarios {0}', needs.determine-mode.outputs.scenarios) || '' }}
+              continue-on-error: true
+
+            - name: Upload reports
+              uses: actions/upload-artifact@v4
+              with:
+                  name: adversarial-reports-${{ github.run_id }}
+                  path: "LAYER 2 TACTICAL HIMARI OPUS/${{ env.REPORTS_DIR }}/"
+                  retention-days: 90
+
+            - name: Parse results
+              id: parse
+              working-directory: "LAYER 2 TACTICAL HIMARI OPUS"
+              run: |
+                  # Find latest summary file
+                  SUMMARY=$(ls -t ${{ env.REPORTS_DIR }}/*_summary.json 2>/dev/null | head -1)
+                  if [ -f "$SUMMARY" ]; then
+                    SURVIVAL=$(jq -r '.survival_rate' "$SUMMARY")
+                    PASSED=$(jq -r '.passed' "$SUMMARY")
+                    FAILED=$(jq -r '.failed' "$SUMMARY")
+                    echo "survival=$SURVIVAL" >> $GITHUB_OUTPUT
+                    echo "passed=$PASSED" >> $GITHUB_OUTPUT
+                    echo "failed=$FAILED" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: Check pass threshold
+              if: steps.run-tests.outcome == 'failure'
+              run: |
+                  echo "::error::Adversarial tests failed with survival rate below 95%"
+                  exit 1
+
+    notify-on-failure:
+        needs: run-adversarial-tests
+        if: failure()
+        runs-on: ubuntu-latest
+        steps:
+            - name: Send Slack notification
+              uses: slackapi/slack-github-action@v1.25.0
+              with:
+                  payload: |
+                      {
+                        "text": "⚠️ L2-5 Adversarial Tests Failed",
+                        "blocks": [
+                          {
+                            "type": "section",
+                            "text": {
+                              "type": "mrkdwn",
+                              "text": "*L2-5 Adversarial Stress Tests Failed*\n\nMode: ${{ needs.determine-mode.outputs.mode }}\nRun: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                            }
+                          }
+                        ]
+                      }
+              env:
+                  SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+                  SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+    notify-on-success:
+        needs: run-adversarial-tests
+        if: success()
+        runs-on: ubuntu-latest
+        steps:
+            - name: Log success
+              run: |
+                  echo "✅ L2-5 Adversarial tests passed"
+                  echo "Mode: ${{ needs.determine-mode.outputs.mode }}"
+
+    # Optional: Trigger Vast.ai GPU instance for full runs
+    trigger-vastai:
+        needs: determine-mode
+        if: needs.determine-mode.outputs.mode == 'full' && github.event_name == 'schedule'
+        runs-on: ubuntu-latest
+        steps:
+            - name: Trigger Vast.ai instance
+              run: |
+                  echo "Would trigger Vast.ai A10 instance for full monthly run"
+                  # vastai create instance ... (requires vastai CLI)
+                  # Or use API: curl -X POST https://console.vast.ai/api/v0/instances/...
+              env:
+                  VASTAI_API_KEY: ${{ secrets.VASTAI_API_KEY }}

@@ -1,0 +1,38 @@
+# HIMARI Layer 2 - Part M: Adaptation Framework Configuration
+# 6 Methods: M1-M6
+
+adaptation:
+  # M1: Online Learning
+  online_learning:
+    enabled: true
+    learning_rate: 0.001
+    batch_size: 32
+    update_frequency: 100 # bars
+
+  # M2: Drift Detection
+  drift_detection:
+    window_size: 50
+    threshold: 2.0
+    methods: ["cusum", "pagehinley"]
+
+  # M3: Ensemble Weighting
+  ensemble_weighting:
+    method: "bayesian" # or "bandit"
+    decay_rate: 0.99
+    min_weight: 0.05
+
+  # M4: Hyperparameter Adaptation
+  hyperparameter_adaptation:
+    enabled: true
+    adaptation_interval: 1000
+
+  # M5: Regime-Specific Models
+  regime_models:
+    enabled: true
+    models_per_regime: 1
+
+  # M6: Feedback Loop
+  feedback:
+    enabled: true
+    reward_window: 50
+    penalty_for_loss: 1.5

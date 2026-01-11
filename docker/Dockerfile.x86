@@ -1,0 +1,62 @@
+# HIMARI Layer 2 - x86_64 Docker Image
+# Target: Lambda Labs H100 (80GB) @ $3.29/hr (training fallback)
+#         Lambda Labs A10 (24GB) @ $0.75/hr (inference)
+# Architecture: x86_64
+
+FROM nvcr.io/nvidia/pytorch:24.01-py3
+
+# Metadata
+LABEL maintainer="HIMARI OPUS 2 Team"
+LABEL description="Layer 2 Tactical Decision Engine - x86_64 (H100/A10)"
+LABEL version="3.0"
+
+# Environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+# System dependencies
+RUN apt-get update && apt-get install -y \
+    git wget curl vim htop tmux redis-server \
+    libhdf5-dev libopenblas-dev build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create working directory
+WORKDIR /app
+
+# Copy requirements
+COPY requirements_v3.txt /app/requirements.txt
+
+# Upgrade pip
+RUN pip install --upgrade pip wheel setuptools
+
+# Install PyTorch for x86_64 with CUDA 12.1
+RUN pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cu121
+
+# Install TA-Lib
+RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz && \
+    tar -xzf ta-lib-0.4.0-src.tar.gz && \
+    cd ta-lib/ && \
+    ./configure --prefix=/usr && \
+    make && \
+    make install && \
+    cd .. && \
+    rm -rf ta-lib ta-lib-0.4.0-src.tar.gz
+
+# Install Python dependencies
+RUN pip install -r requirements.txt
+
+# Install Flash Attention 2 for x86_64
+RUN pip install flash-attn --no-build-isolation || echo "Flash Attention install failed - will use fallback"
+
+# Copy source code
+COPY . /app
+
+# Expose ports
+EXPOSE 8000 6379 7474
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import torch; assert torch.cuda.is_available()" || exit 1
+
+# Default command
+CMD ["bash"]

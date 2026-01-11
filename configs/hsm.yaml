@@ -1,0 +1,65 @@
+# HIMARI Layer 2 - Part E: HSM State Machine Configuration
+# 6 Methods: E1-E6
+
+hsm:
+  # E1: Orthogonal Regions
+  orthogonal_regions:
+    enabled: true
+    regions:
+      - name: position
+        states:
+          [
+            FLAT,
+            LONG_ENTRY,
+            LONG_HOLD,
+            LONG_EXIT,
+            SHORT_ENTRY,
+            SHORT_HOLD,
+            SHORT_EXIT,
+          ]
+        initial: FLAT
+      - name: regime
+        states: [TRENDING_UP, TRENDING_DOWN, RANGING, HIGH_VOLATILITY, CRISIS]
+        initial: RANGING
+
+  # E2: Hierarchical Nesting
+  hierarchical_nesting:
+    enabled: true
+    super_states:
+      LONG_MODE: [LONG_ENTRY, LONG_HOLD, LONG_EXIT]
+      SHORT_MODE: [SHORT_ENTRY, SHORT_HOLD, SHORT_EXIT]
+
+  # E3: History States
+  history_states:
+    use_deep_history: false
+    conservative_reentry: true
+    clear_on_restore: true
+
+  # E4: Synchronized Events
+  synchronized_events:
+    synchronous: true
+    default_priority: 100
+    continue_on_error: true
+    event_chains:
+      crisis_detected: [force_liquidate, halt_trading]
+      crisis_resolved: [resume_trading]
+
+  # E5: Learned Transitions
+  learned_transitions:
+    enabled: true
+    feature_dim: 64
+    hidden_dim: 128
+    learning_rate: 0.0001
+    min_confidence_threshold: 0.3
+    use_regime_conditioning: true
+    model_path: models/learned_transitions.pt
+
+  # E6: Oscillation Detection
+  oscillation_detection:
+    window_seconds: 300.0 # 5 minutes
+    max_transitions_in_window: 4
+    cooldown_seconds: 60.0
+    detect_reversal_patterns: true
+    min_transition_interval: 5.0
+    exempt_transitions:
+      - [ANY, FLAT] # Emergency exit always allowed

@@ -1,0 +1,129 @@
+# HIMARI Layer 2 - Parts F through N Configuration
+# Unified configuration for subsystems F-N
+
+# Part F: Uncertainty Quantification (8 methods)
+uncertainty:
+  ct_ssf:
+    latent_dim: 64
+    n_calibration: 500
+    alpha: 0.10
+    attention_temp: 1.0
+  cptc:
+    base_alpha: 0.10
+    regime_expansion: 2.0
+    decay_rate: 0.95
+    lookback_window: 100
+  temperature_scaling:
+    initial_temp: 1.5
+    min_temp: 0.1
+    max_temp: 10.0
+  knn_ood:
+    k: 5
+    threshold_percentile: 95
+
+# Part G: Hysteresis Filter (6 methods)
+hysteresis:
+  kama:
+    er_period: 10
+    fast_threshold_entry: 0.25
+    slow_threshold_entry: 0.45
+    smoothing_factor: 0.3
+  atr_bands:
+    atr_period: 14
+    baseline_period: 100
+    entry_sensitivity: 0.7
+    base_entry: 0.40
+    base_exit: 0.18
+  loss_aversion_ratio: 2.2
+  whipsaw:
+    learning_rate: 0.02
+    max_adjustment: 0.15
+
+# Part H: RSS Risk Management (6 methods)
+risk_management:
+  kelly:
+    base_fraction: 0.25
+    max_position: 0.20
+    min_position: 0.01
+    win_rate_period: 100
+  volatility_targeting:
+    target_vol: 0.15
+    lookback: 20
+    max_leverage: 3.0
+  drawdown_control:
+    max_drawdown: 0.15
+    critical_drawdown: 0.20
+  stop_loss:
+    atr_multiplier: 2.0
+    max_loss_pct: 0.02
+    trailing_activation: 0.01
+
+# Part I: Simplex Safety (6 methods)
+safety:
+  circuit_breaker:
+    max_loss_per_trade: 0.02
+    max_daily_loss: 0.05
+    max_consecutive_losses: 5
+    cooldown_seconds: 300
+  anomaly_detection:
+    z_threshold: 3.0
+    window: 100
+  position_limits:
+    max_position_value: 100000
+    max_position_pct: 0.20
+    max_notional: 500000
+    max_positions: 10
+
+# Part J: LLM Integration (6 methods)
+llm_integration:
+  narrative:
+    max_length: 256
+    temperature: 0.7
+  embedding_dim: 64
+  max_context_length: 512
+
+# Part K: Training Infrastructure (6 methods)
+training:
+  replay_buffer:
+    capacity: 100000
+    batch_size: 256
+    priority_alpha: 0.6
+    priority_beta: 0.4
+  curriculum:
+    stages: 5
+    warmup_steps: 1000
+  hyperparameters:
+    initial_lr: 0.001
+    warmup_steps: 1000
+
+# Part L: Validation Framework (6 methods)
+validation:
+  backtest:
+    initial_capital: 100000
+    commission_rate: 0.001
+    slippage_pct: 0.0005
+  walk_forward:
+    train_ratio: 0.7
+    n_windows: 5
+  cross_validation:
+    n_splits: 5
+    gap: 20
+
+# Part M: Adaptation Framework (6 methods)
+adaptation:
+  online_learning:
+    learning_rate: 0.00001
+    batch_size: 32
+    update_frequency: 100
+  drift_detection:
+    window_size: 500
+    threshold: 2.0
+
+# Part N: Interpretability Framework (6 methods)
+interpretability:
+  feature_attribution:
+    n_steps_ig: 50
+  rule_extraction:
+    n_rules: 10
+  confidence_analysis:
+    n_bins: 10

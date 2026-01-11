@@ -1,0 +1,72 @@
+# HIMARI Layer 2 - Test Configuration
+# Quick test configuration for verifying setup
+
+training:
+  num_epochs: 2 # Only 2 epochs for testing
+  steps_per_epoch: 10 # Only 10 steps
+  batch_size: 32 # Smaller batch for CPU testing
+
+  initial_lr: 0.001
+  lr_scheduler: "linear"
+  warmup_steps: 5
+
+  curriculum:
+    enabled: false # Disable for test
+
+data:
+  root_dir: "./data"
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+  feature_dim: 60
+
+model:
+  flag_trader:
+    enabled: false # Disable large model for test
+  cgdt:
+    enabled: false
+  cql:
+    enabled: false
+  ppo:
+    enabled: true # Only enable lightweight PPO
+    hidden_dim: 64
+
+monitoring:
+  wandb:
+    enabled: true
+    entity: "charithliyanage52-himari"
+    project: "himari-layer2-test"
+    tags:
+      - "test-run"
+      - "local-cpu"
+
+  log_interval: 5 # Log frequently for test
+  eval_interval: 10
+
+checkpoints:
+  dir: "./checkpoints"
+  interval_steps: 10 # Save every 10 steps for test
+  keep_last_n: 2
+  save_best: true
+  best_metric: "loss"
+
+gpu:
+  device_id: 0
+  mixed_precision: false # Disable for CPU
+  gradient_checkpointing: false
+
+optimization:
+  gradient_clip: 1.0
+  weight_decay: 0.01
+
+safety:
+  enable_alerts: true
+  alert_on_nan: true
+  alert_on_divergence: false # Disable for test
+
+validation:
+  enabled: false # Skip for test
+
+experiment:
+  name: "himari-layer2-test-run"
+  description: "Test run to verify monitoring setup"

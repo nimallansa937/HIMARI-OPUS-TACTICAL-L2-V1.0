@@ -1,0 +1,124 @@
+# HIMARI Layer 2 Training Configuration
+# Main configuration for initial training run
+
+training:
+  # Training schedule
+  num_epochs: 50 # Full curriculum: 50 epochs
+  steps_per_epoch: 100 # Batches per epoch
+  batch_size: 256
+
+  # Learning rate
+  initial_lr: 0.0001
+  lr_scheduler: "cosine" # cosine, exponential, or linear
+  warmup_steps: 1000
+
+  # Curriculum learning (Part K1)
+  curriculum:
+    enabled: true
+    stage1_epochs: 10 # Easy samples
+    stage2_epochs: 15 # Medium samples
+    stage3_epochs: 25 # Hard samples
+
+# Data paths
+data:
+  root_dir: "./data"
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+
+  # Data requirements
+  required_months: 6 # 6 months of historical data
+  bar_interval: "5min" # 5-minute bars
+  feature_dim: 60 # HIMARI Layer 1 feature vector size
+
+# Model architecture
+model:
+  # FLAG-TRADER (135M parameters)
+  flag_trader:
+    enabled: true
+    model_size: "135M"
+    use_lora: true
+    lora_rank: 16
+
+  # CGDT (Critic-Guided Decision Transformer)
+  cgdt:
+    enabled: true
+    hidden_dim: 256
+    num_layers: 6
+
+  # CQL (Conservative Q-Learning)
+  cql:
+    enabled: true
+    alpha: 2.0
+
+  # PPO-LSTM baseline
+  ppo:
+    enabled: true
+    hidden_dim: 128
+
+# Monitoring & Logging
+monitoring:
+  # Weights & Biases
+  wandb:
+    enabled: true
+    project: "himari-layer2"
+    entity: "charithliyanage52-himari"
+    name: "baseline-run-001"
+    tags: ["baseline", "A10", "curriculum-learning"]
+
+  # Logging intervals
+  log_interval: 100 # Log every 100 steps
+  eval_interval: 500 # Evaluate every 500 steps
+
+  # GPU tracking
+  track_gpu: true
+  track_system: true
+
+# Checkpoints
+checkpoints:
+  dir: "./checkpoints"
+  interval_steps: 360 # Save every ~6 hours (360 steps at ~1 min/step)
+  keep_last_n: 5 # Keep last 5 checkpoints
+  save_best: true # Always save best model
+  best_metric: "sharpe_ratio" # Metric to track for best model
+
+# GPU settings
+gpu:
+  device_id: 0 # GPU device (0 for single GPU)
+  mixed_precision: true # Use FP16 for faster training
+  gradient_checkpointing: true # Save memory
+
+# Optimization
+optimization:
+  gradient_clip: 1.0
+  weight_decay: 0.01
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_epsilon: 1e-8
+
+# Safety & Alerts
+safety:
+  enable_alerts: true
+  alert_on_nan: true
+  alert_on_divergence: true
+  divergence_threshold: 10.0 # Alert if loss > 10x initial
+  max_grad_norm: 5.0
+
+# Validation
+validation:
+  enabled: true
+  split: 0.1
+  metrics:
+    - "sharpe_ratio"
+    - "max_drawdown"
+    - "win_rate"
+    - "accuracy"
+
+# Experiment tracking
+experiment:
+  name: "himari-layer2-initial-training"
+  description: "Initial training run for HIMARI Layer 2 with full curriculum"
+  notes: |
+    Training on Vast.ai Minnesota A10 GPU
+    Estimated cost: $21.68
+    Estimated duration: 133 hours (5-6 days)

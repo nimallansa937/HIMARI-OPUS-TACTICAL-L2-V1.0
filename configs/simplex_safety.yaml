@@ -1,0 +1,38 @@
+# HIMARI Layer 2 - Part I: Simplex Safety System Configuration
+# 6 Methods: I1-I6
+
+simplex_safety:
+  # I1: Circuit Breakers
+  circuit_breakers:
+    consecutive_loss_limit: 5
+    hourly_loss_limit: 0.03
+    daily_loss_limit: 0.05
+    cooldown_minutes: 30
+
+  # I2: Anomaly Detection
+  anomaly_detection:
+    z_threshold: 3.0
+    lookback_window: 100
+
+  # I3: Rate Limiting
+  rate_limiting:
+    max_trades_per_minute: 10
+    max_trades_per_hour: 100
+    max_trades_per_day: 500
+
+  # I4: Position Limits
+  position_limits:
+    max_position_pct: 0.20
+    max_notional: 100000
+
+  # I5: Sanity Checks
+  sanity_checks:
+    max_price_deviation: 0.10
+    min_liquidity: 1000
+    max_spread_bps: 50
+
+  # I6: Emergency Shutdown
+  emergency:
+    enabled: true
+    volatility_spike_threshold: 5.0
+    correlation_breakdown_threshold: 0.3

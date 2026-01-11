@@ -1,0 +1,42 @@
+# HIMARI Layer 2 - Part J: LLM Integration Configuration
+# 6 Methods: J1-J6
+
+llm_integration:
+  # General settings
+  enabled: true
+  model: "gpt-4"
+  fallback_model: "gpt-3.5-turbo"
+  max_tokens: 500
+  temperature: 0.3
+
+  # J1: Market Narrative Generation
+  narrative:
+    enabled: true
+    regime_descriptions: true
+    technical_summary: true
+
+  # J2: Signal Explanation
+  signal_explainer:
+    enabled: true
+    feature_importance: true
+
+  # J3: Risk Narrative
+  risk_narrative:
+    enabled: true
+    drawdown_alerts: true
+
+  # J4: Artifact Injection
+  artifact_injection:
+    enabled: true
+    rag_enabled: true
+    embedding_model: "text-embedding-ada-002"
+
+  # J5: Decision Summary
+  decision_summary:
+    enabled: true
+    include_confidence: true
+
+  # J6: Report Generation
+  reports:
+    daily_summary: true
+    trade_logs: true

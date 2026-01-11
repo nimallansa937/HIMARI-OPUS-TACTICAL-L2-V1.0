@@ -1,0 +1,212 @@
+# HIMARI Layer 2 - Training Configuration
+# Version: 5.0 Ultimate (78 Methods Architecture)
+
+# =============================================================================
+# PREPROCESSING (Section A - v5.0 Upgrades)
+# =============================================================================
+preprocessing:
+  # A1: Extended Kalman Filter (replaces basic Kalman)
+  ekf:
+    state_dim: 4 # [price, velocity, acceleration, volatility]
+    measurement_dim: 2 # [price, volume]
+    process_noise: 0.001
+    measurement_noise: 0.01
+    use_faux_riccati: true
+
+  # A2: Conversational Autoencoder (NEW)
+  cae:
+    latent_dim: 32
+    hidden_dim: 128
+    input_dim: 60
+    kl_weight: 0.1
+    dropout: 0.1
+
+  # A3: Frequency Domain Normalization (NEW)
+  freq_norm:
+    window_size: 256
+    n_freq_components: 32
+    adapt_rate: 0.1
+
+  # A4: TimeGAN Augmentation (replaces MJD/GARCH)
+  augmentation:
+    method: "timegan"
+    multiplier: 10
+    timegan:
+      seq_len: 24
+      hidden_dim: 128
+      latent_dim: 64
+      epochs: 100
+      batch_size: 64
+
+# =============================================================================
+# REGIME DETECTION (Section B - v5.0 Upgrades)
+# =============================================================================
+regime:
+  # B1: Student-t Adaptive Hierarchical HMM (replaces Gaussian HMM)
+  ahhmm:
+    n_market_states: 4 # Bull, Bear, Sideways, Crisis
+    n_meta_states: 2 # Low/High Uncertainty
+    emission_type: "student_t"
+    df: 5.0 # Degrees of freedom for fat tails
+    use_hierarchical: true
+    update_window: 500
+    vix_high_threshold: 0.6
+    vix_low_threshold: 0.4
+
+# =============================================================================
+# DECISION ENGINE (Section D - v5.0 Upgrades)
+# =============================================================================
+decision_engine:
+  primary: "flag_trader" # NEW: LLM as policy network
+  ensemble: ["flag_trader", "cgdt", "cql", "ppo"]
+
+  # D1: FLAG-TRADER (NEW - 135M LLM as policy)
+  flag_trader:
+    model_name: "HuggingFaceTB/SmolLM2-135M-Instruct"
+    lora_r: 16
+    lora_alpha: 32
+    lora_dropout: 0.1
+    use_rslora: true # Rank-Stabilized LoRA
+    learning_rate: 0.0001
+    gamma: 0.99
+    gae_lambda: 0.95
+    clip_epsilon: 0.2
+    value_coef: 0.5
+    entropy_coef: 0.01
+
+  # D2: Critic-Guided Decision Transformer (upgraded from DT)
+  cgdt:
+    context_length: 500
+    n_layer: 6
+    n_head: 8
+    hidden_dim: 256
+    dropout: 0.1
+    target_return: 2.5 # Target Sharpe
+
+  # D3: Conservative Q-Learning (NEW - offline RL fallback)
+  cql:
+    hidden_dim: 256
+    cql_alpha: 1.0
+    min_q_weight: 5.0
+
+# =============================================================================
+# PPO-LSTM TRAINING (kept from v4.0)
+# =============================================================================
+ppo_lstm:
+  hidden_dim: 1024
+  n_layers: 10
+  total_params: 25_000_000
+  learning_rate: 3.0e-4
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+
+# =============================================================================
+# UNCERTAINTY QUANTIFICATION (Section F - v5.0)
+# =============================================================================
+uncertainty:
+  methods: ["ct_ssf", "cptc", "ensemble"]
+
+  # F1: CT-SSF Latent Conformal (NEW)
+  ct_ssf:
+    latent_dim: 64
+    n_calibration: 500
+    alpha: 0.10 # 90% coverage target
+    attention_temp: 1.0
+
+  # F2: CPTC Regime Change Points (NEW)
+  cptc:
+    coverage_target: 0.90
+
+  # F3: Temperature Scaling (NEW)
+  temperature_scaling:
+    enabled: true
+
+# =============================================================================
+# RISK MANAGEMENT (Section H - v5.0)
+# =============================================================================
+risk:
+  # H1: EVT + GPD Tail Risk (upgraded from basic VaR)
+  tail_risk:
+    method: "evt_gpd"
+    threshold_percentile: 0.95
+
+  # H2: DDPG-TiDE Dynamic Kelly (NEW)
+  kelly:
+    method: "ddpg_tide"
+    max_leverage: 3.0
+
+  # H3: DCC-GARCH Correlation (NEW)
+  correlation:
+    method: "dcc_garch"
+    rebalance_hours: 4
+
+# =============================================================================
+# SIMPLEX SAFETY (Section I - v5.0)
+# =============================================================================
+simplex:
+  n_fallback_levels: 4 # Upgraded from 2
+  fallback_hierarchy:
+    - "flag_trader"
+    - "cgdt"
+    - "cql"
+    - "rule_based"
+
+  # I2: Predictive Safety (NEW)
+  predictive_safety:
+    enabled: true
+    horizon_steps: 5
+
+  # I3: Formal Verification (NEW)
+  formal_verification:
+    enabled: true
+    max_leverage: 3.0
+    max_position: 0.20
+    max_drawdown: 0.05
+
+# =============================================================================
+# ADVERSARIAL SELF-PLAY (kept from v4.0)
+# =============================================================================
+adversarial_selfplay:
+  curriculum:
+    - name: "fixed"
+      duration_weeks: 2
+      opponent_strategy: "fixed_threshold"
+    - name: "reactive"
+      duration_weeks: 2
+      opponent_strategy: "reactive_mm"
+    - name: "strategic"
+      duration_weeks: 4
+      opponent_strategy: "strategic_adversary"
+  fgsm_epsilon: 0.01
+  pgd_epsilon: 0.03
+  pgd_steps: 10
+
+# =============================================================================
+# REWARD SHAPING (kept from v4.0)
+# =============================================================================
+reward_shaping:
+  sortino_weight: 0.3
+  calmar_weight: 0.3
+  drawdown_penalty: 0.4
+  risk_free_rate: 0.0
+
+# =============================================================================
+# GENERAL TRAINING
+# =============================================================================
+training:
+  seed: 42
+  num_workers: 4
+  device: "cuda"
+  fp16: true
+  gradient_accumulation_steps: 1
+  save_every_n_epochs: 10
+  keep_last_n_checkpoints: 3
+  log_interval: 100
+  eval_interval: 1000

@@ -1,0 +1,18 @@
+{
+  "results": [
+    {
+      "model": "BaselineMLP",
+      "accuracy": 0.20808802239166105,
+      "class_accuracies": {
+        "class_0": 0.0770005032712632,
+        "class_1": 0.0,
+        "class_2": 0.9217671421997239
+      },
+      "inference_time": 0.005740165710449219,
+      "samples_per_sec": 1805000.1555075594,
+      "params": 18691
+    }
+  ],
+  "best_model": "BaselineMLP",
+  "best_accuracy": 0.20808802239166105
+}

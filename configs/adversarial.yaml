@@ -1,0 +1,121 @@
+# L2-5 Adversarial Synthetic Stress Testing Configuration
+
+# =============================================================================
+# CATEGORY 1: Tail Extrapolation
+# =============================================================================
+tail_extrapolation:
+  historical_worst_daily: -0.15           # -15% (March 2020)
+  scale_factors: [1.5, 2.0, 2.5, 3.0]     # Multipliers for worst case
+  historical_bear_months: 12              # 2022 bear market
+  duration_extensions: [18, 24, 36]       # Extended durations in months
+  historical_max_vol: 1.5                 # 150% annualized
+  volatility_amplifications: [1.33, 1.67, 2.0]
+  scenarios_count: 2000
+  steps_per_scenario: 50000
+
+# =============================================================================
+# CATEGORY 2: Correlation Stress
+# =============================================================================
+correlation_stress:
+  normal_correlation: 0.3
+  stress_levels: [0.8, 0.9, 0.95, 0.99]
+  transition_days: [3, 5, 10]
+  scenarios_count: 1500
+  steps_per_scenario: 30000
+
+# =============================================================================
+# CATEGORY 3: Multi-Failure
+# =============================================================================
+multi_failure:
+  max_simultaneous: 4
+  failure_types:
+    - exchange_halt
+    - stablecoin_depeg
+    - cascade_liquidation
+    - api_degradation
+    - oracle_manipulation
+    - correlation_spike
+  scenarios_count: 2000
+  steps_per_scenario: 75000
+
+# =============================================================================
+# CATEGORY 4: Distribution Shift
+# =============================================================================
+distribution_shift:
+  historical_kurtosis: 5
+  kurtosis_levels: [10, 15, 20, 30]
+  historical_skew: -0.5
+  skew_levels: [-1.0, -1.5, -2.0, -3.0]
+  scenarios_count: 1500
+  steps_per_scenario: 100000
+
+# =============================================================================
+# CATEGORY 5: Signal Corruption
+# =============================================================================
+signal_corruption:
+  stale_data_lag_ms: [100, 500, 1000, 5000]
+  oracle_lag_pct: [0.01, 0.05, 0.10]
+  scenarios_count: 1500
+  steps_per_scenario: 10000
+
+# =============================================================================
+# CATEGORY 6: Parameter Sensitivity
+# =============================================================================
+parameter_sensitivity:
+  perturbation_pcts: [0.1, 0.2, 0.5]
+  critical_params:
+    - max_drawdown_pct
+    - max_leverage
+    - cvar_budget_pct
+    - correlation_threshold
+    - abstain_threshold
+  # 2-way interaction pairs
+  interaction_pairs:
+    - [max_drawdown_pct, max_leverage]
+    - [cvar_budget_pct, max_leverage]
+    - [correlation_threshold, abstain_threshold]
+    - [max_drawdown_pct, cvar_budget_pct]
+  scenarios_count: 1500
+  steps_per_scenario: 25000
+
+# =============================================================================
+# EXECUTION SETTINGS
+# =============================================================================
+execution:
+  total_scenarios: 10000
+  parallel_workers: 4
+  batch_size: 1000                        # Steps before yield (memory management)
+  checkpoint_every_scenarios: 100         # Save checkpoint every N scenarios
+  max_memory_gb: 6.0                      # Leave headroom on 8GB A10
+  graceful_shutdown: true                 # Save progress on kill signal
+  gpu_memory_limit_gb: 8.0
+  timeout_per_scenario_seconds: 600       # 10 minutes max per scenario
+
+# =============================================================================
+# REPRODUCIBILITY
+# =============================================================================
+reproducibility:
+  log_all_seeds: true                     # Log every seed for reproduction
+  scenario_hash_tracking: true            # Track scenario definition hashes
+  version: "1.0.0"
+
+# =============================================================================
+# THRESHOLDS
+# =============================================================================
+thresholds:
+  survival_rate_min: 0.95                 # >95% survival required
+  max_drawdown_limit: 0.20                # 20% max drawdown
+  detection_latency_max_sec: 120          # 2 minutes max detection
+  parameter_sensitivity_max: 0.50         # Max 50% survival drop from ±20% change
+  cvar_accuracy_threshold: 0.20           # CVaR within 20% of realized
+
+# =============================================================================
+# REPORTING
+# =============================================================================
+reporting:
+  output_dir: "reports/adversarial"
+  generate_heatmaps: true
+  alert_on_critical_failures: true
+  slack_webhook_url: null
+  persist_to_knowledge_graph: true
+  knowledge_graph_dir: "data/knowledge_graph"
