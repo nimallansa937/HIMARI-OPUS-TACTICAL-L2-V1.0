@@ -192,11 +192,45 @@ This document logs all training experiments conducted for the HIMARI Layer 2 Tra
 - Sharpe: 38.88 (unrealistic but directionally correct)
 - Still collapsed to ~86% LONG
 
-**Next Experiment:** PPO + Carry Cost + Bear Market Validation
+**Next Experiment:** PPO + Carry Cost + Temperature Sampling + Higher Entropy
 
-- 0.001% per bar carry cost for non-FLAT
-- 40/40/20 split (includes 2022 crash)
-- Target: Model learns to SHORT during downtrends
+---
+
+### Experiment 7: PPO v2 with Carry Cost + Temperature Sampling (PENDING)
+
+**Key Fixes Applied:**
+
+| Fix | What | Why |
+|-----|------|-----|
+| Carry Cost | 0.002%/bar penalty for holding | Forces model to actively justify positions |
+| Temperature Sampling | T=0.5 during validation | Prevents model learning entropy doesn't matter |
+| Higher Entropy | 0.10 → 0.02 with 0.2% decay | Maintains exploration longer |
+| Higher target_kl | 0.05 instead of 0.03 | Allows more policy change per update |
+
+**Carry Cost Math:**
+
+- 0.002%/bar × 288 bars/day = 0.576%/day
+- Holding 100% LONG for 365 days = 210% drag
+- Model must actively decide when holding is worth the cost
+
+**PPO Config:**
+
+```python
+ppo_config = PPOConfig(
+    clip_range=0.2, clip_range_vf=0.2,
+    ppo_epochs=10, num_minibatches=4,
+    target_kl=0.05,           # Up from 0.03
+    entropy_coef=0.10,        # Up from 0.05
+    entropy_min=0.02,         # Up from 0.01
+    entropy_decay=0.998,      # Slower (0.2% vs 0.5%)
+)
+```
+
+**Expected Results:**
+
+- FLAT usage should increase (to avoid carry cost)
+- Shorter average hold times
+- Model should trade more selectively
 
 ---
 

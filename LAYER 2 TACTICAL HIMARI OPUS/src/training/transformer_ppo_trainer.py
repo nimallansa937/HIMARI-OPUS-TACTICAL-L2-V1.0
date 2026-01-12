@@ -25,7 +25,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 from src.models.transformer_a2c import TransformerA2C, TransformerA2CConfig
-from src.training.sortino_reward import SimpleSortinoReward, SortinoWithTransactionCosts
+from src.training.sortino_reward import SimpleSortinoReward, SortinoWithTransactionCosts, SortinoWithCarryCost
 
 # Optional: wandb for logging
 try:
@@ -92,6 +92,8 @@ class TransformerPPOTrainer:
         use_transaction_costs: bool = True,
         trading_fee: float = 0.001,
         slippage: float = 0.0005,
+        # Carry cost to prevent "hold forever" collapse
+        carry_cost: float = 0.00002,  # 0.002% per bar (~0.6% per day)
     ):
         self.model_config = model_config
         self.ppo_config = ppo_config
@@ -125,18 +127,22 @@ class TransformerPPOTrainer:
         self.use_transaction_costs = use_transaction_costs
         self.trading_fee = trading_fee
         self.slippage = slippage
+        self.carry_cost = carry_cost
 
         if use_transaction_costs:
-            self.reward_fn = SortinoWithTransactionCosts(
+            # Use carry cost version to prevent "hold forever" collapse
+            self.reward_fn = SortinoWithCarryCost(
                 target_return=0.0,
                 downside_penalty=2.0,
                 scale=100.0,
                 trading_fee=trading_fee,
                 slippage=slippage,
+                carry_cost=carry_cost,
             )
             logger.info(
-                f"Using SortinoWithTransactionCosts: "
-                f"fee={trading_fee*100:.2f}%, slippage={slippage*100:.2f}%"
+                f"Using SortinoWithCarryCost: "
+                f"fee={trading_fee*100:.2f}%, slippage={slippage*100:.2f}%, "
+                f"carry={carry_cost*100:.4f}%/bar"
             )
         else:
             self.reward_fn = SimpleSortinoReward(
@@ -407,30 +413,56 @@ class TransformerPPOTrainer:
         }
 
     @torch.no_grad()
-    def validate(self) -> float:
-        """Run validation and return Sharpe ratio."""
+    def validate(self, use_temperature: bool = True) -> float:
+        """
+        Run validation and return Sharpe ratio.
+
+        KEY FIX: Use temperature-scaled sampling during training validation
+        to maintain exploration signal. Only use deterministic for final test.
+
+        Args:
+            use_temperature: If True, sample with temperature scaling (training validation)
+                           If False, use argmax (final test evaluation)
+        """
         self.model.eval()
 
         state, _ = self.val_env.reset()
 
         if self.use_transaction_costs:
-            reward_fn = SortinoWithTransactionCosts(
+            reward_fn = SortinoWithCarryCost(
                 scale=100.0,
                 trading_fee=self.trading_fee,
                 slippage=self.slippage,
+                carry_cost=self.carry_cost,
             )
         else:
             reward_fn = SimpleSortinoReward(scale=100.0)
 
         action_counts = {0: 0, 1: 0, 2: 0}
 
+        # Temperature for validation sampling
+        # Higher entropy_coef = higher temperature = more exploration
+        # This ensures validation reflects training policy behavior
+        temperature = 0.5 if use_temperature else 0.0
+
         done = False
         while not done:
             state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-            output = self.model(state_tensor, deterministic=True)
 
-            action = output["action"].item()
-            confidence = output["confidence"].item()
+            if temperature > 0:
+                # Sample from temperature-scaled policy (matches training behavior)
+                encoded = self.model.encoder(state_tensor)
+                logits = self.model.actor(encoded)
+                scaled_logits = logits / temperature
+                probs = F.softmax(scaled_logits, dim=-1)
+                action = torch.multinomial(probs, 1).squeeze().item()
+                confidence = probs[0, action].item()
+            else:
+                # Deterministic (argmax) for final evaluation only
+                output = self.model(state_tensor, deterministic=True)
+                action = output["action"].item()
+                confidence = output["confidence"].item()
+
             action_counts[action] += 1
 
             next_state, market_return, done, _ = self.val_env.step(action)
@@ -455,10 +487,12 @@ class TransformerPPOTrainer:
             gross_return = reward_fn.get_gross_return()
             net_return = reward_fn.get_net_return()
             avg_hold = total_actions / max(trade_count, 1)
+            # Get carry cost if available
+            carry_cost = reward_fn.get_total_carry() if hasattr(reward_fn, 'get_total_carry') else 0.0
             logger.info(
                 f"Trading: trades={trade_count}, avg_hold={avg_hold:.1f} bars, "
                 f"gross={gross_return*100:.2f}%, net={net_return*100:.2f}%, "
-                f"costs={total_costs*100:.3f}%"
+                f"tx_costs={total_costs*100:.3f}%, carry={carry_cost*100:.3f}%"
             )
 
         logger.info(
@@ -680,6 +714,7 @@ def train_transformer_ppo(
     use_transaction_costs: bool = True,
     trading_fee: float = 0.001,
     slippage: float = 0.0005,
+    carry_cost: float = 0.00002,  # 0.002% per bar for holding positions
 ) -> Optional[Dict]:
     """
     Train Transformer-PPO model.
@@ -696,6 +731,7 @@ def train_transformer_ppo(
         use_transaction_costs: Include transaction costs in reward
         trading_fee: Trading fee per trade
         slippage: Slippage estimate per trade
+        carry_cost: Cost per bar for holding non-FLAT positions
 
     Returns:
         Best checkpoint info
@@ -714,6 +750,7 @@ def train_transformer_ppo(
         use_transaction_costs=use_transaction_costs,
         trading_fee=trading_fee,
         slippage=slippage,
+        carry_cost=carry_cost,
     )
 
     if checkpoint_path:
