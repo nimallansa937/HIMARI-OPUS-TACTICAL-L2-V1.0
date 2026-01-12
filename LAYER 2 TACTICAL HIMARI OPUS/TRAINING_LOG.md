@@ -224,7 +224,7 @@ This document logs all training experiments conducted for the HIMARI Layer 2 Tra
 
 ---
 
-### Experiment 7: PPO v2 with Carry Cost + Temperature Sampling (PENDING)
+### Experiment 7: PPO v2 with Carry Cost + Temperature Sampling ✅ BEST SO FAR
 
 **Key Fixes Applied:**
 
@@ -235,30 +235,47 @@ This document logs all training experiments conducted for the HIMARI Layer 2 Tra
 | Higher Entropy | 0.10 → 0.02 with 0.2% decay | Maintains exploration longer |
 | Higher target_kl | 0.05 instead of 0.03 | Allows more policy change per update |
 
-**Carry Cost Math:**
+**Results:**
 
-- 0.002%/bar × 288 bars/day = 0.576%/day
-- Holding 100% LONG for 365 days = 210% drag
-- Model must actively decide when holding is worth the cost
+| Step | Sharpe | Net Return | Trades | FLAT % | LONG % | SHORT % | Entropy |
+|------|--------|------------|--------|--------|--------|---------|---------|
+| 20k | -32.49 | -1697% | 38,907 | 2.5% | 48.7% | 48.8% | 0.81 |
+| 61k | +8.17 | +411% | 30,159 | 1.2% | 52.2% | 46.7% | 0.69 |
+| 100k | +17.63 | +873% | 26,801 | 0.4% | 57.7% | 41.9% | 0.58 |
+| 141k | **+27.85** | **+1348%** | 23,223 | 0.5% | 65.3% | 34.1% | 0.53 |
+| **221k** | **+29.30** | **+1424%** | 25,648 | 0.3% | 54.0% | 45.7% | 0.37 |
+| 241k | - | - | - | 2.6% | 42.3% | 55.2% | 0.37 |
 
-**PPO Config:**
+**Key Observations:**
+
+1. ✅ **NO COLLAPSE!** Model maintained 40-55% SHORT throughout
+2. ✅ **Balanced actions** - First time ever with real LONG/SHORT balance
+3. ✅ **Sharpe turned positive** from -32 → +29, consistently improving
+4. ✅ **Entropy stable** at 0.35-0.55 (not dying like previous experiments)
+5. ⚠️ **Still over-trading** - 23-38k trades, avg hold 3-4 bars (15-20 min)
+
+**Conclusion:** Carry cost + higher entropy WORKS for preventing collapse. But 0.002%/bar carry cost isn't enough to reduce trading frequency.
+
+---
+
+### Experiment 8: Higher Carry Cost (PLANNED)
+
+**Problem:** Model is over-trading (23-38k trades, avg 3-4 bar holds)
+
+**Solution:** Increase carry cost 5× to penalize rapid position flipping
 
 ```python
-ppo_config = PPOConfig(
-    clip_range=0.2, clip_range_vf=0.2,
-    ppo_epochs=10, num_minibatches=4,
-    target_kl=0.05,           # Up from 0.03
-    entropy_coef=0.10,        # Up from 0.05
-    entropy_min=0.02,         # Up from 0.01
-    entropy_decay=0.998,      # Slower (0.2% vs 0.5%)
-)
+# Experiment 7: 0.00002 (0.002%/bar = 0.6%/day)
+# Experiment 8: 0.0001  (0.01%/bar  = 2.9%/day) - 5x higher
+
+carry_cost=0.0001  # Makes holding positions more expensive
 ```
 
-**Expected Results:**
+**Expected Impact:**
 
-- FLAT usage should increase (to avoid carry cost)
-- Shorter average hold times
-- Model should trade more selectively
+- Avg hold time: 3-4 bars → 10-20 bars (1-2 hours)
+- Trades: 23k → 5-10k (fewer, more selective)
+- Net return: Should improve as transaction costs decrease
 
 ---
 
