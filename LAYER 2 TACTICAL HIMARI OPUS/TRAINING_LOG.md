@@ -138,6 +138,34 @@ This document logs all training experiments conducted for the HIMARI Layer 2 Tra
 
 ---
 
+### Experiment 6b: PPO with Bear Market Validation (40/40/20 Split)
+
+**Key Change:** Include 2022 bear market in validation period to force model to learn SHORT
+
+**Split:** Train=[0:210800] (2020-2021), Val=[210800:421600] (2021-2023), Test=[421600:527000] (2023-2024)
+
+| Step | Sharpe | Net Return | Trades | Avg Hold | LONG % | SHORT % |
+|------|--------|------------|--------|----------|--------|---------|
+| 20k | 45.13 | 5370% | 60,490 | 3.5 bars | 51.1% | 48.9% |
+| 40k | 53.27 | 6245% | 49,974 | 4.2 bars | 40.4% | 59.6% |
+| 61k | 55.12 | 6380% | 39,744 | 5.3 bars | 29.1% | 70.9% |
+| 81k | 55.98 | 6451% | 35,976 | 5.9 bars | 26.2% | 73.8% |
+| **100k** | **57.44** | **6564%** | 30,194 | 7.0 bars | 21.8% | **78.2%** |
+| 120k | 53.68 | 6158% | 31,580 | 6.7 bars | 22.9% | 77.1% |
+| 141k | - | - | - | - | 1.5% | 98.5% |
+
+**Key Observations:**
+
+1. ✅ **Model learned to SHORT for the first time!** Bear market validation worked
+2. ✅ Net returns improved (6564% vs 1818% with bullish validation)
+3. ❌ Still collapsed - but to SHORT instead of LONG
+4. ❌ FLAT never used (0% throughout)
+5. Best checkpoint at 100k steps
+
+**Conclusion:** Bear market in validation forces SHORT learning, but model still collapses to single dominant action.
+
+---
+
 ## Solutions Implemented
 
 ### Solution 1: Higher Entropy Coefficient
