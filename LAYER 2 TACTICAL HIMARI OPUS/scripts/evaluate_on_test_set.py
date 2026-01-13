@@ -44,7 +44,6 @@ def evaluate_on_split(
 ) -> Dict:
     """Evaluate model on a specific data split."""
     from src.environment.transformer_a2c_env import TransformerEnvConfig, TransformerA2CEnv
-    from src.training.sortino_reward import SortinoWithCarryCost
     
     # Create environment for this split
     split_features = features[start_idx:end_idx]
@@ -53,18 +52,12 @@ def evaluate_on_split(
     config = TransformerEnvConfig(context_length=100, feature_dim=features.shape[1])
     env = TransformerA2CEnv(split_features, split_prices, config)
     
-    # Initialize reward function
-    reward_fn = SortinoWithCarryCost(
-        trading_fee=0.001,
-        slippage=0.0005,
-        carry_cost=0.00005
-    )
-    
     model.eval()
     
     # Collect actions and returns
     actions_taken = []
-    returns = []
+    portfolio_returns = []
+    prev_action = 0  # Start FLAT
 
     obs, info = env.reset()
     done = False
@@ -78,22 +71,33 @@ def evaluate_on_split(
             probs = torch.softmax(probs, dim=-1)
             action = torch.multinomial(probs, 1).item()
         
-        obs, reward, done, info = env.step(action)
+        obs, market_return, done, info = env.step(action)
 
         actions_taken.append(action)
-        # The step() returns market_return as the reward directly
-        returns.append(reward)
+        
+        # Calculate position-weighted return
+        # Action: 0=FLAT, 1=LONG, 2=SHORT
+        # Use PREVIOUS action to determine position during this bar
+        if prev_action == 1:  # LONG
+            position_return = market_return
+        elif prev_action == 2:  # SHORT
+            position_return = -market_return
+        else:  # FLAT
+            position_return = 0.0
+        
+        portfolio_returns.append(position_return)
+        prev_action = action
     
     # Compute metrics
     actions_array = np.array(actions_taken)
-    returns_array = np.array(returns)
+    returns_array = np.array(portfolio_returns)
     
     # Action distribution
     flat_pct = np.mean(actions_array == 0) * 100
     long_pct = np.mean(actions_array == 1) * 100
     short_pct = np.mean(actions_array == 2) * 100
     
-    # Sharpe ratio
+    # Sharpe ratio (annualized for 5-min bars)
     if len(returns_array) > 1 and np.std(returns_array) > 0:
         sharpe = np.mean(returns_array) / np.std(returns_array) * np.sqrt(252 * 288)
     else:
@@ -102,7 +106,7 @@ def evaluate_on_split(
     # Trade count
     trades = np.sum(np.diff(actions_array) != 0)
     
-    # Total return
+    # Total return (cumulative)
     total_return = np.sum(returns_array)
     
     return {
@@ -146,7 +150,8 @@ def shuffle_test(
         
         model.eval()
         obs, info = env.reset()
-        returns = []
+        portfolio_returns = []
+        prev_action = 0  # Start FLAT
 
         for _ in range(min(10000, len(shuffled_features) - 100)):
             obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(device)
@@ -155,8 +160,18 @@ def shuffle_test(
                 output = model(obs_tensor, deterministic=True)
                 action = output['action'].item()
 
-            obs, reward, done, info = env.step(action)
-            returns.append(info.get('return', 0))
+            obs, market_return, done, info = env.step(action)
+            
+            # Position-weighted return
+            if prev_action == 1:  # LONG
+                position_return = market_return
+            elif prev_action == 2:  # SHORT
+                position_return = -market_return
+            else:
+                position_return = 0.0
+            
+            portfolio_returns.append(position_return)
+            prev_action = action
 
             if done:
                 break
