@@ -71,10 +71,11 @@ def evaluate_on_split(
 
     while not done:
         obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(device)
-        
+
         with torch.no_grad():
-            logits, _ = model(obs_tensor)
-            probs = torch.softmax(logits / temperature, dim=-1)
+            output = model(obs_tensor, deterministic=False)
+            probs = output['probs'] / temperature
+            probs = torch.softmax(probs, dim=-1)
             action = torch.multinomial(probs, 1).item()
         
         obs, reward, done, info = env.step(action)
@@ -150,8 +151,8 @@ def shuffle_test(
             obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(device)
 
             with torch.no_grad():
-                logits, _ = model(obs_tensor)
-                action = torch.argmax(logits, dim=-1).item()
+                output = model(obs_tensor, deterministic=True)
+                action = output['action'].item()
 
             obs, reward, done, info = env.step(action)
             returns.append(info.get('return', 0))
