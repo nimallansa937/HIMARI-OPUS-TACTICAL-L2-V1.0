@@ -65,24 +65,22 @@ def evaluate_on_split(
     # Collect actions and returns
     actions_taken = []
     returns = []
-    
-    obs = env.reset()
+
+    obs, info = env.reset()
     done = False
-    
+
     while not done:
-        obs_tensor = torch.FloatTensor(np.array(obs)).unsqueeze(0).to(device)
+        obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(device)
         
         with torch.no_grad():
             logits, _ = model(obs_tensor)
             probs = torch.softmax(logits / temperature, dim=-1)
             action = torch.multinomial(probs, 1).item()
         
-        next_obs, reward, done, info = env.step(action)
-        
+        obs, reward, done, info = env.step(action)
+
         actions_taken.append(action)
         returns.append(info.get('return', 0))
-        
-        obs = next_obs
     
     # Compute metrics
     actions_array = np.array(actions_taken)
@@ -145,22 +143,21 @@ def shuffle_test(
         env = TransformerA2CEnv(shuffled_features, shuffled_prices, config)
         
         model.eval()
-        obs = env.reset()
+        obs, info = env.reset()
         returns = []
-        
+
         for _ in range(min(10000, len(shuffled_features) - 100)):
             obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(device)
-            
+
             with torch.no_grad():
                 logits, _ = model(obs_tensor)
                 action = torch.argmax(logits, dim=-1).item()
-            
-            next_obs, reward, done, info = env.step(action)
+
+            obs, reward, done, info = env.step(action)
             returns.append(info.get('return', 0))
-            
+
             if done:
                 break
-            obs = next_obs
         
         returns_array = np.array(returns)
         if len(returns_array) > 1 and np.std(returns_array) > 0:
