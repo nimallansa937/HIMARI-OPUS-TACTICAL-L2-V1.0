@@ -176,7 +176,7 @@ def shuffle_test(
             if done:
                 break
         
-        returns_array = np.array(returns)
+        returns_array = np.array(portfolio_returns)
         if len(returns_array) > 1 and np.std(returns_array) > 0:
             sharpe = np.mean(returns_array) / np.std(returns_array) * np.sqrt(252 * 288)
         else:
