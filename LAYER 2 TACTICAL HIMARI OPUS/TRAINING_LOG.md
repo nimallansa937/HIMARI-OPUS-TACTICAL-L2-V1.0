@@ -258,24 +258,47 @@ This document logs all training experiments conducted for the HIMARI Layer 2 Tra
 
 ---
 
-### Experiment 8: Higher Carry Cost (PLANNED)
+### Experiment 8: Higher Carry Cost (5× Exp 7)
 
-**Problem:** Model is over-trading (23-38k trades, avg 3-4 bar holds)
+**Config:** `carry_cost=0.0001` (0.01%/bar = 2.9%/day)
 
-**Solution:** Increase carry cost 5× to penalize rapid position flipping
+| Step | Sharpe | Trades | LONG % | SHORT % |
+|------|--------|--------|--------|---------|
+| 20k | -72.29 | 43,852 | 64.7% | 20.6% |
+| **81k** | **15.44** | 17,689 | 76.4% | 23.5% |
+| 120k | 11.14 | 20,994 | 69.0% | 30.7% |
+| 180k | 1.77 | 27,198 | 54.6% | 45.0% |
 
-```python
-# Experiment 7: 0.00002 (0.002%/bar = 0.6%/day)
-# Experiment 8: 0.0001  (0.01%/bar  = 2.9%/day) - 5x higher
+**Result:** Early stopped at 180k. LONG-biased (76/24). Carry cost too high.
 
-carry_cost=0.0001  # Makes holding positions more expensive
-```
+---
 
-**Expected Impact:**
+### Experiment 9: Middle Carry Cost (2.5× Exp 7) ✅ BEST
 
-- Avg hold time: 3-4 bars → 10-20 bars (1-2 hours)
-- Trades: 23k → 5-10k (fewer, more selective)
-- Net return: Should improve as transaction costs decrease
+**Config:** `carry_cost=0.00005` (0.005%/bar = 1.44%/day)
+
+| Step | Sharpe | Net Return | LONG % | SHORT % | Trades |
+|------|--------|------------|--------|---------|--------|
+| 20k | -8.76 | -433% | 70.5% | 26.6% | 23k |
+| 100k | 18.70 | +910% | 65.7% | 33.9% | 20k |
+| 161k | 11.65 | +574% | **50.0%** | **49.5%** | 24k |
+| 180k | 25.35 | +1224% | 45.0% | 54.5% | 22k |
+| 260k | 31.38 | +1502% | 52.3% | 47.6% | 21k |
+| 280k | 33.60 | +1597% | 54.0% | 46.0% | 19k |
+| **301k** | **35.71** | **+1694%** | **52.6%** | **47.4%** | **19k** |
+
+**Key Observations:**
+
+1. ✅ **Best balance ever:** 53% LONG / 47% SHORT (nearly perfect!)
+2. ✅ **Consistent improvement:** Sharpe went 18→25→31→33→35
+3. ✅ **Reduced trading:** 23k → 19k trades
+4. ✅ **Training completed** without early stopping
+5. ⚠️ **FLAT never used** (0% throughout)
+6. ⚠️ **Entropy dropped to 0.16** at end (need to verify on test set)
+
+**Best Checkpoint:** `checkpoint_301056_best.pt` (Sharpe 35.71, 53/47 balance)
+
+**Saved to:** `C:\Users\chari\OneDrive\Documents\HIMARI OPUS 2\LAYER 2 V1\L2V1 EXPERIMENT 9 MODEL\`
 
 ---
 
