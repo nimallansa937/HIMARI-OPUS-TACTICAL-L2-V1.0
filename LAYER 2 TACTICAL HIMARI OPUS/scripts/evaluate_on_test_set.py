@@ -81,7 +81,8 @@ def evaluate_on_split(
         obs, reward, done, info = env.step(action)
 
         actions_taken.append(action)
-        returns.append(info.get('return', 0))
+        # The step() returns market_return as the reward directly
+        returns.append(reward)
     
     # Compute metrics
     actions_array = np.array(actions_taken)
