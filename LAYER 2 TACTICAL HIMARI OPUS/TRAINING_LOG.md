@@ -364,6 +364,44 @@ This document logs all training experiments conducted for the HIMARI Layer 2 Tra
 
 ---
 
+### 🚨 Experiment 9: 2025 Live Backtest FAILURE
+
+**Date:** 2026-01-13
+**Data:** BTC 5-min, Jan 2025 - Jan 2026 (108,750 bars) - **TRULY UNSEEN**
+
+| Metric | Value |
+|--------|-------|
+| Initial Capital | $10,000 |
+| **Final Capital** | **$0** |
+| **Total Return** | **-100.0%** |
+| Sharpe Ratio | -0.74 |
+| Max Drawdown | -100.0% |
+| Total Trades | 55,722 |
+
+**Action Distribution (2025 vs Training):**
+
+| Action | Training (2020-2024) | 2025 Backtest |
+|--------|---------------------|---------------|
+| LONG | 54% | **22%** |
+| SHORT | 34% | **64%** |
+| FLAT | 12% | 14% |
+
+**Root Cause Analysis:**
+
+1. **Regime Shift:** 2025 was a strong BTC bull market, different from 2022-2023 bear market patterns
+2. **No Regime Awareness:** Model kept applying SHORT-biased patterns that worked in training
+3. **Overfitting to Historical Patterns:** High Sharpe on validation was misleading
+4. **Catastrophic Position:** 64% SHORT in a bull market = complete wipeout
+
+**Critical Lessons:**
+
+- ❌ **Model CANNOT be deployed as-is**
+- ❌ **Validation Sharpe 50+ was NOT generalizable**
+- ✅ **Live data backtesting is ESSENTIAL before deployment**
+- ✅ **Regime detection is REQUIRED for any production system**
+
+---
+
 ## Recommendations for Future Work
 
 1. **Ensemble Methods:** Train multiple agents on different time periods
