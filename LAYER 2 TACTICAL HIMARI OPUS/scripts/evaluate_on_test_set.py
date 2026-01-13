@@ -70,7 +70,7 @@ def evaluate_on_split(
     done = False
     
     while not done:
-        obs_tensor = torch.FloatTensor(obs).unsqueeze(0).to(device)
+        obs_tensor = torch.FloatTensor(np.array(obs)).unsqueeze(0).to(device)
         
         with torch.no_grad():
             logits, _ = model(obs_tensor)
