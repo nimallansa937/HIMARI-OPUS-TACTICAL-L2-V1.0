@@ -304,9 +304,11 @@ def plot_results(results: dict, prices: np.ndarray, save_path: str = 'backtest_r
 
 def main():
     import argparse
+    import pickle
     
     parser = argparse.ArgumentParser(description='Backtest on unseen 2025-2026 data')
     parser.add_argument('--checkpoint', type=str, required=True, help='Path to model checkpoint')
+    parser.add_argument('--data', type=str, default=None, help='Path to pickle file with features/prices (skip download)')
     parser.add_argument('--device', type=str, default='cuda', help='Device')
     parser.add_argument('--start-date', type=str, default='2025-01-01', help='Start date')
     parser.add_argument('--end-date', type=str, default='2026-01-13', help='End date')
@@ -314,15 +316,26 @@ def main():
     parser.add_argument('--output', type=str, default='backtest_2025_results.png', help='Output path')
     args = parser.parse_args()
     
-    # Download data
-    df = download_btc_data(args.start_date, args.end_date)
-    if df is None or len(df) < 1000:
-        logger.error("Not enough data downloaded")
-        return
+    # Load data from pickle or download
+    if args.data:
+        logger.info(f"Loading data from {args.data}...")
+        with open(args.data, 'rb') as f:
+            data = pickle.load(f)
+        features = np.array(data['features'], dtype=np.float32)
+        prices = np.array(data['prices'], dtype=np.float32)
+        logger.info(f"Loaded {len(features)} samples")
+    else:
+        # Download data
+        df = download_btc_data(args.start_date, args.end_date)
+        if df is None or len(df) < 1000:
+            logger.error("Not enough data downloaded")
+            return
+        
+        # Engineer features
+        logger.info("Engineering features...")
+        features, prices = engineer_features(df)
     
-    # Engineer features
-    logger.info("Engineering features...")
-    features, prices = engineer_features(df)
+    logger.info(f"Features shape: {features.shape}")
     logger.info(f"Features shape: {features.shape}")
     
     # Load model
