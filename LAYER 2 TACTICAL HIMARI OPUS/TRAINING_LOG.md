@@ -426,45 +426,42 @@ This document logs all training experiments conducted for the HIMARI Layer 2 Tra
 | NEW: Persistence | N/A | **0.005% bonus/bar** |
 | NEW: Min Hold | N/A | **2 hours, 0.01% penalty** |
 
-**Training Metrics (500k steps):**
+**Validation Results (Re-run with fixed code):**
 
-| Step | Value Loss | Entropy | KL | Status |
-|------|------------|---------|-------|--------|
-| 4k | 5.12 | 0.94 | 0.03 | Starting |
-| 50k | 1.65 | 0.25 | 0.05 | Learning |
-| 100k | 0.52 | 0.01-0.05 | 0.01 | ⚠️ Entropy low |
-| 200k | 0.24 | 0.08-0.22 | 0.02-0.05 | Recovering |
-| 300k | 0.21 | 0.02-0.27 | 0.01-0.06 | Oscillating |
-| 400k | 0.20 | 0.10-0.40 | 0.01-0.10 | Stabilizing |
-| 500k | 0.18 | 0.06-0.26 | 0.01 | Converged |
+| Step | Sharpe | Return | Trades | LONG % | SHORT % |
+|------|--------|--------|--------|--------|---------|
+| 20k | 0.80 | +0.9% | 203 | 97.1% | 2.8% |
+| 40k | 1.38 | +46.9% | 15 | **99.8%** | 0.2% |
+| 61k | 1.27 | +46.4% | 3 | **100.0%** | 0.0% |
+| 81k | 1.02 | +31.1% | 57 | 99.2% | 0.2% |
+| **100k** | **1.47** | **+33.9%** | 103 | 98.6% | 1.1% |
 
-**Observations:**
+**Training Metrics:**
 
-1. ✅ **Value Loss excellent:** 5.12 → 0.18 (96% reduction)
-2. ⚠️ **Entropy unstable:** Oscillated between 0.01-0.60, sometimes near collapse
-3. ⚠️ **KL constraint active:** Frequent early stopping of PPO epochs
-4. ❌ **Validation bug:** Never triggered (fixed in subsequent push)
-5. ❌ **No checkpoints saved:** Due to validation bug (fixed)
+| Step | Value Loss | Entropy | Status |
+|------|------------|---------|--------|
+| 4k | 10.01 | 0.99 | Starting |
+| 40k | 1.78 | 0.16 | Learning |
+| 100k | 0.53 | 0.07 | ⚠️ Collapsed |
+| 118k | 0.41 | 0.003 | ❌ Fully collapsed |
 
-**Comparison to Previous Experiments:**
+**Result:** ❌ **FAILED - Collapsed to LONG**
 
-| Metric | Exp 7 (5m) | Exp 9 (5m) | Exp 10 (1h) |
-|--------|------------|------------|-------------|
-| Final VL | ~0.8 | ~0.3 | **0.18** ✅ |
-| Entropy Pattern | Stable 0.35-0.55 | Dropped to 0.16 | Oscillating 0.01-0.40 |
-| Collapse | No | Near end | ⚠️ Possible |
-| Data Period | 2020-2024 | 2020-2024 | **2024-2026** |
+- Anti-overtrading worked: Trades dropped from 203 → 3-15
+- Model found "buy and hold BTC" optimum (2024-2026 was bullish)
+- SHORT never learned (0-2.8% throughout)
+- Same issue as Experiment 5/6
 
-**Analysis:**
+---
 
-- Value loss is **best ever** (0.18 vs 0.3 in Exp9)
-- Entropy is **more unstable** than Exp7/9 - may indicate:
-  - 1H data has different dynamics than 5m
-  - Anti-overtrading penalties creating conflicting gradients
-  - Model finding local optima more easily on cleaner data
-- Need validation metrics (Sharpe, trades, action distribution) to judge properly
+### Experiment 10b: Forced SHORT Exposure (PENDING)
 
-**Status:** ⚠️ Completed training, needs re-run with fixed validation/checkpoint code
+**Changes from Exp 10:**
+
+- Add **balance penalty** for action imbalance
+- Minimum 20% SHORT target
+
+**Status:** ⏳ Pending implementation
 
 ---
 

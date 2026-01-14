@@ -53,6 +53,11 @@ class SortinoAntiOvertrade:
         persistence_bonus: float = 0.00005, # 0.005% bonus for same action
         min_hold_bars: int = 2,          # Minimum 2 bars (2 hours) hold
         early_exit_penalty: float = 0.0001, # 0.01% penalty for early exit
+        
+        # NEW: Balance penalty (Exp 10b)
+        balance_target_short: float = 0.20,  # Target 20% SHORT
+        balance_penalty: float = 0.0003,     # 0.03% penalty when imbalanced
+        balance_window: int = 100,           # Look back 100 bars
     ):
         self.target_return = target_return
         self.downside_penalty = downside_penalty
@@ -68,6 +73,11 @@ class SortinoAntiOvertrade:
         self.persistence_bonus = persistence_bonus
         self.min_hold_bars = min_hold_bars
         self.early_exit_penalty = early_exit_penalty
+        
+        # Balance penalty params
+        self.balance_target_short = balance_target_short
+        self.balance_penalty = balance_penalty
+        self.balance_window = balance_window
         
         self.reset()
     
@@ -88,6 +98,10 @@ class SortinoAntiOvertrade:
         self.cooldown_penalties_paid = 0.0
         self.persistence_bonuses_earned = 0.0
         self.early_exit_penalties_paid = 0.0
+        
+        # Balance tracking (Exp 10b)
+        self.action_history = []  # Rolling window
+        self.balance_penalties_paid = 0.0
     
     def compute(
         self,
@@ -160,6 +174,22 @@ class SortinoAntiOvertrade:
             reward -= carry * self.scale
             self.total_carry += carry
         
+        # 5. BALANCE PENALTY - penalize when SHORT exposure below target
+        self.action_history.append(action)
+        if len(self.action_history) > self.balance_window:
+            self.action_history.pop(0)
+        
+        if len(self.action_history) >= self.balance_window:
+            short_count = sum(1 for a in self.action_history if a == 2)
+            short_ratio = short_count / len(self.action_history)
+            
+            # Penalize if SHORT below target
+            if short_ratio < self.balance_target_short:
+                imbalance = self.balance_target_short - short_ratio
+                balance_cost = self.balance_penalty * imbalance * 10  # Scale by imbalance
+                reward -= balance_cost * self.scale
+                self.balance_penalties_paid += balance_cost
+        
         # Track return
         self.returns.append(position_return)
         self.previous_action = action
@@ -183,6 +213,11 @@ class SortinoAntiOvertrade:
     
     def get_stats(self) -> dict:
         """Get detailed stats for logging."""
+        # Calculate current SHORT ratio
+        short_ratio = 0.0
+        if len(self.action_history) > 0:
+            short_ratio = sum(1 for a in self.action_history if a == 2) / len(self.action_history)
+        
         return {
             "trade_count": self.trade_count,
             "gross_return": self.gross_return,
@@ -191,6 +226,8 @@ class SortinoAntiOvertrade:
             "cooldown_penalties": self.cooldown_penalties_paid,
             "persistence_bonuses": self.persistence_bonuses_earned,
             "early_exit_penalties": self.early_exit_penalties_paid,
+            "balance_penalties": self.balance_penalties_paid,
+            "short_ratio": short_ratio,
             "net_return": self.get_net_return(),
             "sharpe": self.get_episode_sharpe(),
         }
@@ -232,6 +269,11 @@ def create_exp10_reward(timeframe: str = "1h") -> SortinoAntiOvertrade:
             persistence_bonus=0.00005,
             min_hold_bars=2,        # 2 hours min hold
             early_exit_penalty=0.0001,
+            
+            # Balance (disabled for Exp 10 - use create_exp10b_reward for balance)
+            balance_target_short=0.0,  # Disabled
+            balance_penalty=0.0,
+            balance_window=100,
         )
     else:  # 5m
         return SortinoAntiOvertrade(
@@ -246,6 +288,58 @@ def create_exp10_reward(timeframe: str = "1h") -> SortinoAntiOvertrade:
             persistence_bonus=0.00005,
             min_hold_bars=6,         # 30 min min hold (6 * 5min)
             early_exit_penalty=0.0001,
+            balance_target_short=0.0,
+            balance_penalty=0.0,
+            balance_window=100,
+        )
+
+
+def create_exp10b_reward(timeframe: str = "1h") -> SortinoAntiOvertrade:
+    """
+    Create reward function for Experiment 10b - with forced SHORT exposure.
+    
+    NEW: balance_penalty forces model to maintain 20% SHORT allocation.
+    """
+    if timeframe == "1h":
+        return SortinoAntiOvertrade(
+            # Sortino base
+            target_return=0.0,
+            downside_penalty=2.0,
+            scale=100.0,
+            
+            # Transaction costs
+            trading_fee=0.001,
+            slippage=0.0005,
+            carry_cost=0.000004,
+            
+            # Anti-overtrading
+            cooldown_periods=4,
+            cooldown_penalty=0.0002,
+            persistence_bonus=0.00005,
+            min_hold_bars=2,
+            early_exit_penalty=0.0001,
+            
+            # FORCED SHORT EXPOSURE
+            balance_target_short=0.20,    # Target 20% SHORT
+            balance_penalty=0.0003,       # 0.03% base penalty
+            balance_window=100,           # Look at last 100 bars
+        )
+    else:  # 5m
+        return SortinoAntiOvertrade(
+            target_return=0.0,
+            downside_penalty=2.0,
+            scale=100.0,
+            trading_fee=0.001,
+            slippage=0.0005,
+            carry_cost=0.00005,
+            cooldown_periods=12,
+            cooldown_penalty=0.0002,
+            persistence_bonus=0.00005,
+            min_hold_bars=6,
+            early_exit_penalty=0.0001,
+            balance_target_short=0.20,
+            balance_penalty=0.0003,
+            balance_window=300,  # ~25 hours for 5m
         )
 
 

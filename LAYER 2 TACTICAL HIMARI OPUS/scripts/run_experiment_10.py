@@ -27,7 +27,7 @@ import torch
 
 from src.models.transformer_a2c import TransformerA2C, TransformerA2CConfig
 from src.environment.transformer_a2c_env import TransformerA2CEnv, TransformerEnvConfig
-from src.training.sortino_anti_overtrade import SortinoAntiOvertrade, create_exp10_reward
+from src.training.sortino_anti_overtrade import SortinoAntiOvertrade, create_exp10b_reward
 
 logging.basicConfig(
     level=logging.INFO,
@@ -124,8 +124,8 @@ class Experiment10Trainer:
             lr=self.ppo.learning_rate
         )
         
-        # Create reward function (anti-overtrading)
-        self.reward_fn = create_exp10_reward("1h")
+        # Create reward function (anti-overtrading + balance penalty)
+        self.reward_fn = create_exp10b_reward("1h")
         
         # Training state
         self.total_steps = 0
