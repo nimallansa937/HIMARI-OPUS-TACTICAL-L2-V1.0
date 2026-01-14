@@ -298,7 +298,9 @@ class PPOTrainer:
         gamma: float = 0.99,
         clip_epsilon: float = 0.2,
         value_coef: float = 0.5,
-        entropy_coef: float = 0.01,
+        entropy_coef: float = 0.05,  # Start higher for exploration
+        entropy_min: float = 0.01,   # Minimum entropy
+        entropy_decay: float = 0.995, # Decay per epoch
         max_grad_norm: float = 0.5,
         device: str = 'cuda'
     ):
@@ -308,12 +310,18 @@ class PPOTrainer:
         self.clip_epsilon = clip_epsilon
         self.value_coef = value_coef
         self.entropy_coef = entropy_coef
+        self.entropy_min = entropy_min
+        self.entropy_decay = entropy_decay
         self.max_grad_norm = max_grad_norm
 
         self.optimizer = torch.optim.AdamW(policy.parameters(), lr=lr)
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             self.optimizer, T_max=N_EPOCHS, eta_min=lr/10
         )
+
+    def decay_entropy(self):
+        """Decay entropy coefficient (call after each epoch)."""
+        self.entropy_coef = max(self.entropy_min, self.entropy_coef * self.entropy_decay)
 
     def train_step(self, batch):
         """Single PPO update step."""
@@ -344,56 +352,36 @@ class PPOTrainer:
         is_hold = (actions == 0).float()
         is_trade = (actions != 0).float()
 
-        # === DYNAMIC HOLD REWARD ===
-        # HOLD reward depends on absolute return magnitude:
-        # - Small |return| = HOLD was correct (avoided noise) = positive reward
-        # - Large |return| = HOLD missed opportunity = negative reward
-        # This makes HOLD a legitimate choice when market is uncertain
+        # === SIMPLE REWARD WITH CARRY COST ===
+        # Key insight from research: Over-engineered rewards cause collapse
+        # Simple approach: PnL + carry cost + minimal regime modifiers
 
-        abs_returns = torch.abs(final_returns)
-        return_threshold = 0.003  # ~0.3% threshold
-
-        # HOLD: reward for small moves, penalize for big moves
-        # When |return| < threshold: reward = +0.02
-        # When |return| > threshold: penalty proportional to missed move
-        hold_correct = (abs_returns < return_threshold).float() * 0.04
-        hold_missed = (abs_returns >= return_threshold).float() * abs_returns * 50
-        hold_reward = is_hold * (hold_correct - hold_missed)
-
-        # Trade PnL: return * position (moderate scaling)
+        # 1. Trade PnL: return * position (core reward)
         trade_pnl = final_returns * position * 100
 
-        # === REGIME-SPECIFIC MODIFIERS ===
+        # 2. CARRY COST: Penalize holding positions (prevents "always trade")
+        # ~0.002% per bar, makes HOLD attractive during low-conviction
+        carry_cost = is_trade * 0.002
 
-        # LOW_VOL (regime 0): HOLD threshold is higher (more tolerant)
-        # Small moves are common, so HOLD is more often correct
-        low_vol_hold_bonus = is_hold * (final_regime == 0).float() * 0.02
+        # 3. SIMPLE REGIME MODIFIERS (minimal, not dominant)
+        # Only penalize clearly wrong behavior, don't over-reward
 
-        # TRENDING (regime 1): Lower HOLD threshold, favor trading
-        # Big moves are expected, so HOLD is penalized more
-        trending_hold_penalty = is_hold * (final_regime == 1).float() * 0.03
-        trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.02
+        # TRENDING (regime 1): Small bonus for trading (capture moves)
+        trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.01
 
-        # HIGH_VOL (regime 2): Higher HOLD threshold (choppy = HOLD is safer)
-        high_vol_hold_bonus = is_hold * (final_regime == 2).float() * 0.04
-        high_vol_trade_penalty = is_trade * (final_regime == 2).float() * 0.02
+        # HIGH_VOL (regime 2): Small bonus for HOLD (avoid whipsaws)
+        high_vol_hold_bonus = is_hold * (final_regime == 2).float() * 0.01
 
-        # CRISIS (regime 3): Strongly favor HOLD (capital preservation)
-        crisis_hold_bonus = is_hold * (final_regime == 3).float() * 0.06
-        crisis_trade_penalty = is_trade * (final_regime == 3).float() * 0.03
+        # CRISIS (regime 3): Moderate bonus for HOLD (capital preservation)
+        crisis_hold_bonus = is_hold * (final_regime == 3).float() * 0.02
 
-        # === COMBINE ===
+        # === COMBINE (SIMPLE) ===
         rewards = (
-            # Base: dynamic HOLD reward OR trade PnL
-            hold_reward + trade_pnl
-            # LOW_VOL: favor HOLD
-            + low_vol_hold_bonus
-            # TRENDING: favor trading
-            - trending_hold_penalty + trending_trade_bonus
-            # HIGH_VOL: favor HOLD
-            + high_vol_hold_bonus - high_vol_trade_penalty
-            # CRISIS: strongly favor HOLD
-            + crisis_hold_bonus - crisis_trade_penalty
+            trade_pnl
+            - carry_cost
+            + trending_trade_bonus
+            + high_vol_hold_bonus
+            + crisis_hold_bonus
         )
 
         # Compute advantages
@@ -468,27 +456,17 @@ class PPOTrainer:
             is_hold = (actions == 0).float()
             is_trade = (actions != 0).float()
 
-            # Base rewards (dynamic HOLD approach)
-            abs_returns = torch.abs(final_returns)
-            return_threshold = 0.003
-            hold_correct = (abs_returns < return_threshold).float() * 0.04
-            hold_missed = (abs_returns >= return_threshold).float() * abs_returns * 50
-            hold_reward = is_hold * (hold_correct - hold_missed)
+            # Simple rewards with carry cost
             trade_pnl = final_returns * position * 100
+            carry_cost = is_trade * 0.002
 
-            # Regime modifiers
-            low_vol_hold_bonus = is_hold * (final_regime == 0).float() * 0.02
-            trending_hold_penalty = is_hold * (final_regime == 1).float() * 0.03
-            trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.02
-            high_vol_hold_bonus = is_hold * (final_regime == 2).float() * 0.04
-            high_vol_trade_penalty = is_trade * (final_regime == 2).float() * 0.02
-            crisis_hold_bonus = is_hold * (final_regime == 3).float() * 0.06
-            crisis_trade_penalty = is_trade * (final_regime == 3).float() * 0.03
+            # Minimal regime modifiers
+            trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.01
+            high_vol_hold_bonus = is_hold * (final_regime == 2).float() * 0.01
+            crisis_hold_bonus = is_hold * (final_regime == 3).float() * 0.02
 
-            rewards = (hold_reward + trade_pnl +
-                      low_vol_hold_bonus - trending_hold_penalty + trending_trade_bonus +
-                      high_vol_hold_bonus - high_vol_trade_penalty +
-                      crisis_hold_bonus - crisis_trade_penalty)
+            rewards = (trade_pnl - carry_cost +
+                      trending_trade_bonus + high_vol_hold_bonus + crisis_hold_bonus)
 
             total_reward += rewards.sum().item()
             total_samples += len(rewards)
@@ -575,14 +553,17 @@ def main():
     print(f"\nModel parameters: {sum(p.numel() for p in model.parameters()):,}")
 
     # Create trainer
-    # Higher entropy_coef (0.05) encourages exploration to find good trades
+    # Entropy starts at 0.05, decays to 0.01 over training
+    # This encourages exploration early, exploitation later
     trainer = PPOTrainer(
         policy=model,
         lr=LEARNING_RATE,
         gamma=0.99,
         clip_epsilon=0.2,
         value_coef=0.5,
-        entropy_coef=0.05,  # Increased from 0.01 to encourage exploration
+        entropy_coef=0.05,      # Start high for exploration
+        entropy_min=0.01,       # Minimum entropy
+        entropy_decay=0.995,    # Decay per epoch
         device=device
     )
 
@@ -604,8 +585,9 @@ def main():
         # Evaluate
         val_metrics = trainer.evaluate(val_loader)
 
-        # Update scheduler
+        # Update scheduler and decay entropy
         trainer.scheduler.step()
+        trainer.decay_entropy()
 
         # Save best model
         if val_metrics['mean_reward'] > best_val_reward:
