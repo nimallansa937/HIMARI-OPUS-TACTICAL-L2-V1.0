@@ -326,53 +326,58 @@ class PPOTrainer:
         position = (actions == 1).float() - (actions == 2).float()
 
         # Base reward = return * position (scaled)
-        base_reward = final_returns * position * 100
+        # Amplify base reward to make correct trades more valuable
+        base_reward = final_returns * position * 200
 
-        # === HOLD INCENTIVES ===
         is_hold = (actions == 0).float()
         is_trade = (actions != 0).float()
 
-        # 1. HOLD bonus in LOW_VOL (regime 0) - ranging market, avoid overtrading
-        low_vol_hold_bonus = is_hold * (final_regime == 0).float() * 0.05
+        # === REGIME-BASED INCENTIVES ===
+        # Goal: HOLD in risky regimes, TRADE in trending regime
 
-        # 2. HOLD bonus in HIGH_VOL (regime 2) - choppy, hard to predict
-        high_vol_hold_bonus = is_hold * (final_regime == 2).float() * 0.08
+        # 1. Small HOLD bonus in HIGH_VOL and CRISIS only (risky regimes)
+        high_vol_hold_bonus = is_hold * (final_regime == 2).float() * 0.02
+        crisis_hold_bonus = is_hold * (final_regime == 3).float() * 0.03
 
-        # 3. HOLD bonus in CRISIS (regime 3) - extreme risk
-        crisis_hold_bonus = is_hold * (final_regime == 3).float() * 0.10
+        # 2. HOLD PENALTY in TRENDING regime - should be trading!
+        trending_hold_penalty = is_hold * (final_regime == 1).float() * 0.04
 
-        # 4. HOLD is good when returns are near zero (no clear direction)
-        small_return_threshold = 0.001
-        near_zero_returns = (torch.abs(final_returns) < small_return_threshold).float()
-        hold_when_flat_bonus = is_hold * near_zero_returns * 0.03
+        # 3. LOW_VOL is neutral - no bonus or penalty for holding
+
+        # === TRADING INCENTIVES ===
+        # 4. Correct trade bonus (anywhere) - amplify good trades
+        correct_trade = is_trade * (final_returns * position > 0).float()
+        correct_trade_bonus = correct_trade * 0.08
+
+        # 5. Extra bonus for correct trades in TRENDING regime
+        correct_trend_trade = correct_trade * (final_regime == 1).float()
+        trend_bonus = correct_trend_trade * 0.06
+
+        # 6. Small bonus just for trading in TRENDING (encourage activity)
+        trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.02
 
         # === TRADING PENALTIES ===
-        # 5. Trading cost
-        trade_cost = is_trade * 0.02
+        # 7. Small trade cost (realistic)
+        trade_cost = is_trade * 0.01
 
-        # 6. Wrong direction penalty (went LONG but return was negative, or vice versa)
+        # 8. Wrong direction penalty (smaller than before)
         wrong_direction = is_trade * (final_returns * position < 0).float()
-        wrong_direction_penalty = wrong_direction * 0.05
+        wrong_direction_penalty = wrong_direction * 0.03
 
-        # 7. Trading in HIGH_VOL/CRISIS penalty (extra risk)
-        risky_regime_trade = is_trade * ((final_regime == 2) | (final_regime == 3)).float()
-        risky_trade_penalty = risky_regime_trade * 0.03
-
-        # === TRADING BONUSES ===
-        # 8. Correct direction in TRENDING regime (regime 1) - reward good trend following
-        correct_trend_trade = is_trade * (final_regime == 1).float() * (final_returns * position > 0).float()
-        trend_bonus = correct_trend_trade * 0.05
+        # 9. Extra penalty for trading in CRISIS (high risk)
+        crisis_trade_penalty = is_trade * (final_regime == 3).float() * 0.02
 
         # Combine rewards
         rewards = (base_reward
-                  + low_vol_hold_bonus
                   + high_vol_hold_bonus
                   + crisis_hold_bonus
-                  + hold_when_flat_bonus
+                  + correct_trade_bonus
                   + trend_bonus
+                  + trending_trade_bonus
+                  - trending_hold_penalty
                   - trade_cost
                   - wrong_direction_penalty
-                  - risky_trade_penalty)
+                  - crisis_trade_penalty)
 
         # Compute advantages
         with torch.no_grad():
@@ -442,30 +447,35 @@ class PPOTrainer:
             final_regime = regime_ids[:, -1]
 
             position = (actions == 1).float() - (actions == 2).float()
-            base_reward = final_returns * position * 100
+            base_reward = final_returns * position * 200
 
             is_hold = (actions == 0).float()
             is_trade = (actions != 0).float()
 
-            # HOLD bonuses
-            low_vol_hold_bonus = is_hold * (final_regime == 0).float() * 0.05
-            high_vol_hold_bonus = is_hold * (final_regime == 2).float() * 0.08
-            crisis_hold_bonus = is_hold * (final_regime == 3).float() * 0.10
-            near_zero_returns = (torch.abs(final_returns) < 0.001).float()
-            hold_when_flat_bonus = is_hold * near_zero_returns * 0.03
+            # HOLD bonuses (small, only in risky regimes)
+            high_vol_hold_bonus = is_hold * (final_regime == 2).float() * 0.02
+            crisis_hold_bonus = is_hold * (final_regime == 3).float() * 0.03
 
-            # Trading penalties/bonuses
-            trade_cost = is_trade * 0.02
+            # HOLD penalty in TRENDING
+            trending_hold_penalty = is_hold * (final_regime == 1).float() * 0.04
+
+            # Trading bonuses
+            correct_trade = is_trade * (final_returns * position > 0).float()
+            correct_trade_bonus = correct_trade * 0.08
+            correct_trend_trade = correct_trade * (final_regime == 1).float()
+            trend_bonus = correct_trend_trade * 0.06
+            trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.02
+
+            # Trading penalties
+            trade_cost = is_trade * 0.01
             wrong_direction = is_trade * (final_returns * position < 0).float()
-            wrong_direction_penalty = wrong_direction * 0.05
-            risky_regime_trade = is_trade * ((final_regime == 2) | (final_regime == 3)).float()
-            risky_trade_penalty = risky_regime_trade * 0.03
-            correct_trend_trade = is_trade * (final_regime == 1).float() * (final_returns * position > 0).float()
-            trend_bonus = correct_trend_trade * 0.05
+            wrong_direction_penalty = wrong_direction * 0.03
+            crisis_trade_penalty = is_trade * (final_regime == 3).float() * 0.02
 
-            rewards = (base_reward + low_vol_hold_bonus + high_vol_hold_bonus +
-                      crisis_hold_bonus + hold_when_flat_bonus + trend_bonus -
-                      trade_cost - wrong_direction_penalty - risky_trade_penalty)
+            rewards = (base_reward + high_vol_hold_bonus + crisis_hold_bonus +
+                      correct_trade_bonus + trend_bonus + trending_trade_bonus -
+                      trending_hold_penalty - trade_cost - wrong_direction_penalty -
+                      crisis_trade_penalty)
 
             total_reward += rewards.sum().item()
             total_samples += len(rewards)
@@ -552,13 +562,14 @@ def main():
     print(f"\nModel parameters: {sum(p.numel() for p in model.parameters()):,}")
 
     # Create trainer
+    # Higher entropy_coef (0.05) encourages exploration to find good trades
     trainer = PPOTrainer(
         policy=model,
         lr=LEARNING_RATE,
         gamma=0.99,
         clip_epsilon=0.2,
         value_coef=0.5,
-        entropy_coef=0.01,
+        entropy_coef=0.05,  # Increased from 0.01 to encourage exploration
         device=device
     )
 
