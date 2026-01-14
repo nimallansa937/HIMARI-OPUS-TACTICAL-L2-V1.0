@@ -386,6 +386,9 @@ class Experiment10Trainer:
         logger.info(f"  Target KL: {self.ppo.target_kl}")
         logger.info("="*60)
         
+        next_eval_step = eval_interval
+        next_save_step = 50_000  # Save every 50k regardless
+        
         while self.total_steps < total_steps:
             # Collect rollout
             rollout = self.collect_rollout(self.train_env, self.ppo.rollout_steps)
@@ -407,8 +410,13 @@ class Experiment10Trainer:
                     f"EntCoef: {self.current_entropy_coef:.4f}"
                 )
             
-            # Validate
-            if self.total_steps % eval_interval == 0:
+            # Periodic checkpoint save (every 50k steps)
+            if self.total_steps >= next_save_step:
+                self.save_checkpoint(0.0, f"step_{self.total_steps}")
+                next_save_step += 50_000
+            
+            # Validate (fixed: use >= instead of %)
+            if self.total_steps >= next_eval_step:
                 val_stats = self.validate()
                 
                 logger.info("-"*60)
@@ -429,8 +437,10 @@ class Experiment10Trainer:
                     self.best_val_sharpe = val_stats['sharpe']
                     self.save_checkpoint(val_stats['sharpe'], "best")
                 
-                # Periodic save
-                self.save_checkpoint(val_stats['sharpe'])
+                next_eval_step += eval_interval
+        
+        # Final save
+        self.save_checkpoint(0.0, "final")
         
         logger.info("="*60)
         logger.info(f"Training complete! Best Sharpe: {self.best_val_sharpe:.2f}")
