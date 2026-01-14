@@ -352,21 +352,36 @@ class PPOTrainer:
         is_hold = (actions == 0).float()
         is_trade = (actions != 0).float()
 
-        # === SIMPLEST REWARD: PNL + COST ===
-        # HOLD: Gets 0 reward (neutral)
-        # Trade: Gets PnL - cost (can be positive or negative)
-        # The cost makes HOLD attractive when expected PnL is near zero
+        # === ANTI-OVERTRADING REWARD ===
+        # Based on sortino_anti_overtrade.py findings
 
-        # Trade PnL: return * position
+        # 1. BASE PNL for trades
         trade_pnl = final_returns * position * 100
 
-        # Trade cost: per-trade cost (makes HOLD better for small expected moves)
-        trade_cost = is_trade * 0.03
+        # 2. PERSISTENCE BONUS - Makes HOLD competitive
+        #    Small guaranteed reward for staying out of market
+        hold_bonus = is_hold * 0.05
+
+        # 3. BASE TRADE COST - Higher to discourage small trades
+        trade_cost = is_trade * 0.08
+
+        # 4. REGIME-SPECIFIC PENALTIES
+        #    HIGH_VOL (regime 2): Heavy penalty for trading
+        high_vol_penalty = is_trade * (final_regime == 2).float() * 0.10
+        #    CRISIS (regime 3): Even heavier penalty
+        crisis_penalty = is_trade * (final_regime == 3).float() * 0.15
+
+        # 5. TRENDING BONUS - Encourage trading in favorable conditions
+        #    TRENDING (regime 1): Bonus for trading
+        trending_bonus = is_trade * (final_regime == 1).float() * 0.05
 
         # === COMBINE ===
-        # HOLD: reward = 0 (baseline)
-        # Trade: reward = PnL - cost
-        rewards = trade_pnl - trade_cost
+        # HOLD: reward = +0.05 (persistence bonus)
+        # Trade in TRENDING: reward = PnL - 0.08 + 0.05 = PnL - 0.03
+        # Trade in LOW_VOL: reward = PnL - 0.08
+        # Trade in HIGH_VOL: reward = PnL - 0.08 - 0.10 = PnL - 0.18
+        # Trade in CRISIS: reward = PnL - 0.08 - 0.15 = PnL - 0.23
+        rewards = trade_pnl + hold_bonus - trade_cost - high_vol_penalty - crisis_penalty + trending_bonus
 
         # Compute advantages
         with torch.no_grad():
@@ -440,11 +455,15 @@ class PPOTrainer:
             is_hold = (actions == 0).float()
             is_trade = (actions != 0).float()
 
-            # Simplest reward: PnL + cost
+            # Anti-overtrading reward (same as training)
             trade_pnl = final_returns * position * 100
-            trade_cost = is_trade * 0.03
+            hold_bonus = is_hold * 0.05
+            trade_cost = is_trade * 0.08
+            high_vol_penalty = is_trade * (final_regime == 2).float() * 0.10
+            crisis_penalty = is_trade * (final_regime == 3).float() * 0.15
+            trending_bonus = is_trade * (final_regime == 1).float() * 0.05
 
-            rewards = trade_pnl - trade_cost
+            rewards = trade_pnl + hold_bonus - trade_cost - high_vol_penalty - crisis_penalty + trending_bonus
 
             total_reward += rewards.sum().item()
             total_samples += len(rewards)
