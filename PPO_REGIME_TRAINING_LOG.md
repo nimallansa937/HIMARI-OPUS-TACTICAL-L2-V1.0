@@ -409,26 +409,97 @@ CRISIS  : HOLD=8.1%
 
 ---
 
-## Training Session 8: Stronger Variance-Normalized (Current)
+## Training Session 8: Stronger Variance-Normalized
 
 ### Changes from Session 7
 ```python
-# INCREASED REGIME COSTS
 highvol_trade_cost = 0.6  # was 0.3
 crisis_trade_cost = 1.0   # was 0.5
 trending_hold_cost = 0.8  # was 0.5
-
-# INCREASED WRONG DIRECTION PENALTY
 wrong_penalty = 0.5  # was 0.3
 ```
 
-### Expected Results
+### Results
 ```
-TRENDING: ~70-90% trading (stronger hold penalty)
-LOW_VOL : ~30-40% HOLD
-HIGH_VOL: ~50-60% HOLD (stronger trade cost)
-CRISIS  : ~60-70% HOLD (strongest trade cost)
+❌ 99% HOLD COLLAPSE - Costs too high!
+HIGH_VOL cost (0.75) and CRISIS cost (1.15) exceed expected |norm PnL| (0.6)
+Trading never profitable in these regimes.
 ```
+
+---
+
+## Training Sessions 9-13: Calibration (Local Testing)
+
+### Key Discovery
+Expected |normalized PnL| = E[|return / std|] ≈ 0.6
+Therefore, trade costs must be < 0.6 for trading to ever be profitable.
+
+### Session 9: First calibrated attempt
+```python
+base_trade_cost = 0.05, highvol = +0.25, crisis = +0.40
+```
+Result: HOLD=9.4% (good regime differentiation but too low overall)
+
+### Session 10-11: Increasing costs
+```python
+base_trade_cost = 0.15 → 0.20
+```
+Result: HOLD=16-25% (improving)
+
+### Session 12-13: Final calibration
+```python
+base_trade_cost = 0.25
+highvol_trade_cost = 0.35
+crisis_trade_cost = 0.50
+trending_trade_bonus = 0.25
+trending_hold_cost = 0.6
+entropy_coef = 0.10
+```
+
+### Session 13 Results (Local)
+```
+Overall: HOLD=29.4%
+LOW_VOL : HOLD=33.0% (Target: 40-60%)
+TRENDING: HOLD=8.0%  (Target: 20-40%)
+HIGH_VOL: HOLD=45.1% (Target: 60-70%)
+CRISIS  : HOLD=41.4% (Target: 70-80%)
+```
+
+### Analysis
+- Clear regime differentiation achieved
+- HIGH_VOL/CRISIS have higher HOLD than LOW_VOL > TRENDING
+- Simple local model may lack capacity for exact targets
+- Transformer model on Vast.ai should do better
+
+---
+
+## Training Session 14: Calibrated for Vast.ai (Current)
+
+### Reward Structure
+```python
+# Variance-normalized with calibrated costs
+batch_vol = torch.std(final_returns) + 1e-6
+trade_pnl = final_returns * position / batch_vol
+
+# HOLD costs (only TRENDING penalized)
+trending_hold_cost = is_hold * (final_regime == 1).float() * 0.6
+
+# TRADE costs (calibrated to expected |PnL| = 0.6)
+base_trade_cost = is_trade * 0.25
+highvol_trade_cost = is_trade * (final_regime == 2).float() * 0.35
+crisis_trade_cost = is_trade * (final_regime == 3).float() * 0.50
+trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.25
+
+wrong_penalty = wrong_direction * 0.3
+```
+
+### Effective Costs Per Regime
+| Regime | Trade Cost | HOLD Cost | Expected Behavior |
+|--------|------------|-----------|-------------------|
+| TRENDING | 0.00 | 0.60 | Trade (HOLD penalized) |
+| LOW_VOL | 0.25 | 0.00 | Mixed (slight trade cost) |
+| HIGH_VOL | 0.60 | 0.00 | HOLD preferred |
+| CRISIS | 0.75 | 0.00 | Strong HOLD preference |
 
 ### Status
 ⏳ Deploying to Vast.ai...
@@ -454,19 +525,22 @@ CRISIS  : ~60-70% HOLD (strongest trade cost)
    - Can't just globally encourage/discourage actions
    - Must create different incentive landscapes per regime
 
-5. **Trade cost must be significant relative to PnL variance**
-   - 0.03 is too small when PnL can be ±3
-   - Need 0.08-0.15 to make HOLD attractive
+5. **Trade cost must be calibrated to expected |PnL|**
+   - Expected |normalized PnL| ≈ 0.6
+   - Trade costs > 0.6 make trading never profitable
+   - Costs too high → 100% HOLD collapse
+   - Costs too low → <10% HOLD
 
 6. **Opportunity cost approach**
    - Penalize HOLD in TRENDING (missed opportunity)
    - Make HOLD neutral (0) in risky regimes
-   - Amplify wrong trade penalties in risky regimes
+   - No guaranteed HOLD bonuses
 
-7. **The core tension**
-   - Too small penalties → Model ignores them, trades anyway
-   - Guaranteed bonuses → Model exploits them, always HOLD
-   - Solution: Dynamic penalties scaled by actual returns
+7. **The calibration sweet spot**
+   - base_trade_cost = 0.25 (moderate friction)
+   - regime_trade_cost < 0.50 (keeps trading viable)
+   - trending_hold_cost = 0.60 (forces trading)
+   - Only TRENDING has hold penalty
 
 ---
 

@@ -364,40 +364,39 @@ class PPOTrainer:
         trade_pnl = final_returns * position / batch_vol  # Normalized PnL
 
         # 3. REGIME-SPECIFIC HOLD COST (relative to volatility)
-        #    Session 8: STRONGER differentiation
-        #    TRENDING: Very high opportunity cost (you're missing moves)
-        #    LOW_VOL: Slight cost (some opportunity)
-        #    HIGH_VOL/CRISIS: No cost (preservation is valuable)
-        trending_hold_cost = is_hold * (final_regime == 1).float() * 0.8   # 80% of vol (was 0.5)
-        lowvol_hold_cost = is_hold * (final_regime == 0).float() * 0.1     # 10% slight cost (was 0.0)
-        # HIGH_VOL/CRISIS: No hold cost (HOLD is neutral-to-good)
+        #    Session 13: Calibrated based on local testing
+        #    TRENDING: High opportunity cost (forces trading)
+        #    LOW_VOL/HIGH_VOL/CRISIS: Free (HOLD is neutral-to-good)
+        trending_hold_cost = is_hold * (final_regime == 1).float() * 0.6   # 60% of vol
+        # All other regimes: No hold cost (HOLD is free)
 
         # 4. REGIME-SPECIFIC TRADE COST (relative to volatility)
-        #    Session 8: STRONGER penalties in risky regimes
-        #    TRENDING: Low cost (trading encouraged)
-        #    LOW_VOL: Medium cost
-        #    HIGH_VOL: Very high cost (risky to trade)
-        #    CRISIS: Extremely high cost (very risky)
-        base_trade_cost = is_trade * 0.15  # 15% of vol baseline (was 0.1)
-        highvol_trade_cost = is_trade * (final_regime == 2).float() * 0.6  # +60% in HIGH_VOL (was 0.3)
-        crisis_trade_cost = is_trade * (final_regime == 3).float() * 1.0   # +100% in CRISIS (was 0.5)
-        trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.25  # -25% in TRENDING (was 0.2)
+        #    Session 13: Calibrated - expected |norm PnL| = 0.6
+        #    Costs must be < 0.6 for trading to be viable
+        #    TRENDING: Neutral (cost = bonus, trading viable)
+        #    LOW_VOL: Moderate cost
+        #    HIGH_VOL: High cost (risky)
+        #    CRISIS: Very high cost (very risky)
+        base_trade_cost = is_trade * 0.25  # 25% baseline
+        highvol_trade_cost = is_trade * (final_regime == 2).float() * 0.35  # +35% in HIGH_VOL
+        crisis_trade_cost = is_trade * (final_regime == 3).float() * 0.50   # +50% in CRISIS
+        trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.25  # -25% in TRENDING
 
         # 5. WRONG DIRECTION PENALTY (amplify losses)
         wrong_direction = (position * final_returns < 0).float()
-        wrong_penalty = wrong_direction * 0.5  # 50% of vol extra penalty (was 0.3)
+        wrong_penalty = wrong_direction * 0.3  # 30% of vol extra penalty
 
         # === COMBINE (all terms relative to volatility) ===
-        # HOLD in TRENDING: -0.5 (bad)
-        # HOLD in LOW_VOL: -0.2 (slight cost)
-        # HOLD in HIGH_VOL/CRISIS: 0 (neutral - no bonus, no penalty!)
-        # Trade in TRENDING: PnL/vol - 0.1 + 0.2 = PnL/vol + 0.1 (encouraged)
-        # Trade in LOW_VOL: PnL/vol - 0.1 (neutral)
-        # Trade in HIGH_VOL: PnL/vol - 0.1 - 0.3 = PnL/vol - 0.4 (discouraged)
-        # Trade in CRISIS: PnL/vol - 0.1 - 0.5 = PnL/vol - 0.6 (heavily discouraged)
-        # Wrong trade: additional -0.3
+        # Session 13 calibrated costs (expected |norm PnL| = 0.6):
+        # HOLD in TRENDING: -0.6 (bad - forces trading)
+        # HOLD in LOW_VOL/HIGH_VOL/CRISIS: 0 (neutral - no penalty)
+        # Trade in TRENDING: PnL/vol - 0.25 + 0.25 = PnL/vol (neutral cost)
+        # Trade in LOW_VOL: PnL/vol - 0.25 (some cost)
+        # Trade in HIGH_VOL: PnL/vol - 0.25 - 0.35 = PnL/vol - 0.60 (discouraged)
+        # Trade in CRISIS: PnL/vol - 0.25 - 0.50 = PnL/vol - 0.75 (heavily discouraged)
+        # Wrong trade: additional -0.30
 
-        hold_cost = trending_hold_cost + lowvol_hold_cost
+        hold_cost = trending_hold_cost
         trade_cost = base_trade_cost + highvol_trade_cost + crisis_trade_cost - trending_trade_bonus
 
         rewards = trade_pnl - hold_cost - trade_cost - wrong_penalty
@@ -474,22 +473,21 @@ class PPOTrainer:
             is_hold = (actions == 0).float()
             is_trade = (actions != 0).float()
 
-            # Variance-normalized reward (same as training - Session 8 values)
+            # Variance-normalized reward (Session 13 calibrated values)
             batch_vol = torch.std(final_returns) + 1e-6
             trade_pnl = final_returns * position / batch_vol
 
-            trending_hold_cost = is_hold * (final_regime == 1).float() * 0.8
-            lowvol_hold_cost = is_hold * (final_regime == 0).float() * 0.1
+            trending_hold_cost = is_hold * (final_regime == 1).float() * 0.6
 
-            base_trade_cost = is_trade * 0.15
-            highvol_trade_cost = is_trade * (final_regime == 2).float() * 0.6
-            crisis_trade_cost = is_trade * (final_regime == 3).float() * 1.0
+            base_trade_cost = is_trade * 0.25
+            highvol_trade_cost = is_trade * (final_regime == 2).float() * 0.35
+            crisis_trade_cost = is_trade * (final_regime == 3).float() * 0.50
             trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.25
 
             wrong_direction = (position * final_returns < 0).float()
-            wrong_penalty = wrong_direction * 0.5
+            wrong_penalty = wrong_direction * 0.3
 
-            hold_cost = trending_hold_cost + lowvol_hold_cost
+            hold_cost = trending_hold_cost
             trade_cost = base_trade_cost + highvol_trade_cost + crisis_trade_cost - trending_trade_bonus
 
             rewards = trade_pnl - hold_cost - trade_cost - wrong_penalty
