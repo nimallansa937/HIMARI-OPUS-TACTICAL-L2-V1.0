@@ -101,8 +101,7 @@ class Experiment10Trainer:
             num_layers=4,
             num_heads=8,
             dropout=0.1,
-            max_seq_len=100,
-            num_actions=3,
+            context_length=100,
         )
         
         # PPO config (Exp7 settings)
