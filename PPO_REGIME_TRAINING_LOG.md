@@ -257,7 +257,7 @@ The simplest reward doesn't create enough incentive for HOLD because:
 
 ---
 
-## Training Session 5: Anti-Overtrading Reward (Current)
+## Training Session 5: Anti-Overtrading Reward
 
 ### Reward Structure (Based on sortino_anti_overtrade.py)
 ```python
@@ -265,42 +265,173 @@ The simplest reward doesn't create enough incentive for HOLD because:
 trade_pnl = final_returns * position * 100
 
 # 1. PERSISTENCE BONUS - Makes HOLD competitive
-#    Small guaranteed reward for staying out of market
 hold_bonus = is_hold * 0.05
 
 # 2. BASE TRADE COST - Higher than before
 trade_cost = is_trade * 0.08
 
-# 3. REGIME-SPECIFIC PENALTIES - Heavy cost in risky regimes
-#    HIGH_VOL (regime 2): Extra penalty for trading
+# 3. REGIME-SPECIFIC PENALTIES
 high_vol_penalty = is_trade * (final_regime == 2).float() * 0.10
-#    CRISIS (regime 3): Even heavier penalty
 crisis_penalty = is_trade * (final_regime == 3).float() * 0.15
 
-# 4. TRENDING BONUS - Reward trading in good conditions
+# 4. TRENDING BONUS
 trending_bonus = is_trade * (final_regime == 1).float() * 0.05
 
 # COMBINE
 rewards = trade_pnl + hold_bonus - trade_cost - high_vol_penalty - crisis_penalty + trending_bonus
 ```
 
+### Results
+```
+Epoch  10/50: HOLD=100.0% LONG=0.0% SHORT=0.0% (all regimes)
+Training stopped early - 100% HOLD collapse
+```
+
+### Analysis
+**Problem:** Model collapsed to 100% HOLD again because:
+- Hold bonus (0.05) is **guaranteed**
+- Trading is **uncertain** with penalties
+- Model exploits the safe, guaranteed reward
+
+**Key Insight:** ANY guaranteed positive reward for HOLD will be exploited.
+
+---
+
+## Training Session 6: Opportunity Cost Reward (Current)
+
+### Reward Structure
+```python
+# Key insight: HOLD should have NEGATIVE reward in TRENDING (missed opportunity)
+# and ZERO reward in risky regimes (preservation is neutral, not rewarded)
+
+# 1. BASE PNL for trades
+trade_pnl = final_returns * position * 100
+
+# 2. HOLD PENALTY in TRENDING - you're missing out!
+trending_hold_penalty = is_hold * (final_regime == 1).float() * torch.abs(final_returns) * 50
+
+# 3. TRADE COST - minimal
+trade_cost = is_trade * 0.02
+
+# 4. WRONG DIRECTION PENALTY - amplify losses
+wrong_direction = (position * final_returns < 0).float()
+wrong_penalty = wrong_direction * torch.abs(final_returns) * 30
+
+# 5. RISKY REGIME WRONG PENALTY - even worse in HIGH_VOL/CRISIS
+risky_regime = ((final_regime == 2) | (final_regime == 3)).float()
+risky_wrong_penalty = wrong_direction * risky_regime * torch.abs(final_returns) * 20
+
+# COMBINE
+rewards = trade_pnl - trade_cost - trending_hold_penalty - wrong_penalty - risky_wrong_penalty
+```
+
 ### Key Design Principles
-1. **Persistence bonus (0.05)** - Gives HOLD a small guaranteed reward
-2. **Higher trade cost (0.08)** - Makes trading less attractive for small moves
-3. **Regime penalties** - Heavy cost for trading in HIGH_VOL/CRISIS
-4. **Trending bonus** - Encourage trading when conditions are favorable
+1. **NO guaranteed HOLD bonus** - Removes exploitation opportunity
+2. **HOLD penalty in TRENDING** - Scaled by |return| (missed opportunity)
+3. **HOLD = 0 in risky regimes** - Neutral, not rewarded
+4. **Wrong trade penalty** - Scaled by |return|, amplifies losses
+5. **Extra penalty in risky regimes** - Discourages trading in HIGH_VOL/CRISIS
+
+### Expected Rewards
+| Action | Regime | Reward |
+|--------|--------|--------|
+| HOLD | TRENDING | -\|return\| × 50 (penalty!) |
+| HOLD | LOW_VOL | 0 (neutral) |
+| HOLD | HIGH_VOL/CRISIS | 0 (neutral) |
+| Correct trade | Any | PnL × 100 - 0.02 |
+| Wrong trade | LOW_VOL/TRENDING | PnL - \|return\| × 30 |
+| Wrong trade | HIGH_VOL/CRISIS | PnL - \|return\| × 50 |
 
 ### Expected Results
 ```
 Target Distribution:
-TRENDING: ~60-80% trading (LONG/SHORT)
-LOW_VOL : ~40-60% HOLD
-HIGH_VOL: ~60-70% HOLD
-CRISIS  : ~70-80% HOLD
+TRENDING: ~70-90% trading (forced by hold penalty)
+LOW_VOL : ~30-50% HOLD (trading is viable)
+HIGH_VOL: ~50-70% HOLD (wrong trades hurt more)
+CRISIS  : ~60-80% HOLD (wrong trades hurt most)
 ```
 
 ### Status
-⏳ Ready for training...
+❌ Result: 0% HOLD - Model still preferred trading
+
+---
+
+## Training Session 7: Variance-Normalized Reward (FR-LUX Research)
+
+### Key Insight from Research
+Fixed penalties (0.03-0.23) are 3-5 orders of magnitude too small relative to BTC hourly PnL variance (±1-3%). Penalties must scale with REALIZED VOLATILITY.
+
+### Reward Structure
+```python
+# === VARIANCE-NORMALIZED REWARD ===
+batch_vol = torch.std(final_returns) + 1e-6
+trade_pnl = final_returns * position / batch_vol  # Normalized PnL
+
+# REGIME-SPECIFIC HOLD COST (as fraction of volatility)
+trending_hold_cost = is_hold * (final_regime == 1).float() * 0.5   # 50% of vol
+lowvol_hold_cost = is_hold * (final_regime == 0).float() * 0.0     # Neutral
+
+# REGIME-SPECIFIC TRADE COST
+base_trade_cost = is_trade * 0.1  # 10% baseline
+highvol_trade_cost = is_trade * (final_regime == 2).float() * 0.3  # +30%
+crisis_trade_cost = is_trade * (final_regime == 3).float() * 0.5   # +50%
+trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.2  # -20%
+
+wrong_direction = (position * final_returns < 0).float()
+wrong_penalty = wrong_direction * 0.3
+
+rewards = trade_pnl - hold_cost - trade_cost - wrong_penalty
+```
+
+### Local Test Results (3 epochs)
+```
+Epoch 1/3: HOLD=15.4% LONG=43.0% SHORT=41.6%
+Epoch 2/3: HOLD=3.9%  LONG=48.7% SHORT=47.4%
+Epoch 3/3: HOLD=7.3%  LONG=47.0% SHORT=45.7%
+
+By Regime (Epoch 3):
+LOW_VOL : HOLD=7.3%
+TRENDING: HOLD=6.1%
+HIGH_VOL: HOLD=8.7%
+CRISIS  : HOLD=8.1%
+```
+
+### Analysis
+**Progress:**
+- First time seeing regime differentiation (HIGH_VOL/CRISIS > TRENDING for HOLD)
+- No collapse to 0% or 100%
+- Variance normalization working
+
+**Problems:**
+- HOLD still too low (7-8% vs target 30-50%)
+- Regime differentiation too weak (8.7% vs 6.1% = only 2.6% difference)
+- Need stronger trade costs in risky regimes
+
+---
+
+## Training Session 8: Stronger Variance-Normalized (Current)
+
+### Changes from Session 7
+```python
+# INCREASED REGIME COSTS
+highvol_trade_cost = 0.6  # was 0.3
+crisis_trade_cost = 1.0   # was 0.5
+trending_hold_cost = 0.8  # was 0.5
+
+# INCREASED WRONG DIRECTION PENALTY
+wrong_penalty = 0.5  # was 0.3
+```
+
+### Expected Results
+```
+TRENDING: ~70-90% trading (stronger hold penalty)
+LOW_VOL : ~30-40% HOLD
+HIGH_VOL: ~50-60% HOLD (stronger trade cost)
+CRISIS  : ~60-70% HOLD (strongest trade cost)
+```
+
+### Status
+⏳ Deploying to Vast.ai...
 
 ---
 
@@ -309,6 +440,7 @@ CRISIS  : ~70-80% HOLD
 1. **Guaranteed rewards dominate uncertain rewards**
    - Even small constant bonuses (0.05) can overwhelm uncertain trading returns
    - Model exploits any guaranteed reward source
+   - **Solution: NO guaranteed HOLD rewards**
 
 2. **Must balance bonuses and penalties**
    - HOLD bonuses need corresponding trade bonuses
@@ -326,9 +458,15 @@ CRISIS  : ~70-80% HOLD
    - 0.03 is too small when PnL can be ±3
    - Need 0.08-0.15 to make HOLD attractive
 
-6. **Reference: sortino_anti_overtrade.py approach**
-   - Cooldown penalty, persistence bonus, carry cost
-   - Forces deliberate trading decisions
+6. **Opportunity cost approach**
+   - Penalize HOLD in TRENDING (missed opportunity)
+   - Make HOLD neutral (0) in risky regimes
+   - Amplify wrong trade penalties in risky regimes
+
+7. **The core tension**
+   - Too small penalties → Model ignores them, trades anyway
+   - Guaranteed bonuses → Model exploits them, always HOLD
+   - Solution: Dynamic penalties scaled by actual returns
 
 ---
 

@@ -364,26 +364,28 @@ class PPOTrainer:
         trade_pnl = final_returns * position / batch_vol  # Normalized PnL
 
         # 3. REGIME-SPECIFIC HOLD COST (relative to volatility)
-        #    TRENDING: High opportunity cost (you're missing moves)
-        #    LOW_VOL: Medium cost (some opportunity)
-        #    HIGH_VOL/CRISIS: Low cost (preservation is valuable)
-        trending_hold_cost = is_hold * (final_regime == 1).float() * 0.5   # 50% of vol
-        lowvol_hold_cost = is_hold * (final_regime == 0).float() * 0.0     # 0% - neutral in LOW_VOL
+        #    Session 8: STRONGER differentiation
+        #    TRENDING: Very high opportunity cost (you're missing moves)
+        #    LOW_VOL: Slight cost (some opportunity)
+        #    HIGH_VOL/CRISIS: No cost (preservation is valuable)
+        trending_hold_cost = is_hold * (final_regime == 1).float() * 0.8   # 80% of vol (was 0.5)
+        lowvol_hold_cost = is_hold * (final_regime == 0).float() * 0.1     # 10% slight cost (was 0.0)
         # HIGH_VOL/CRISIS: No hold cost (HOLD is neutral-to-good)
 
         # 4. REGIME-SPECIFIC TRADE COST (relative to volatility)
+        #    Session 8: STRONGER penalties in risky regimes
         #    TRENDING: Low cost (trading encouraged)
         #    LOW_VOL: Medium cost
-        #    HIGH_VOL: High cost (risky to trade)
-        #    CRISIS: Very high cost (very risky)
-        base_trade_cost = is_trade * 0.1  # 10% of vol baseline
-        highvol_trade_cost = is_trade * (final_regime == 2).float() * 0.3  # +30% in HIGH_VOL
-        crisis_trade_cost = is_trade * (final_regime == 3).float() * 0.5   # +50% in CRISIS
-        trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.2  # -20% in TRENDING
+        #    HIGH_VOL: Very high cost (risky to trade)
+        #    CRISIS: Extremely high cost (very risky)
+        base_trade_cost = is_trade * 0.15  # 15% of vol baseline (was 0.1)
+        highvol_trade_cost = is_trade * (final_regime == 2).float() * 0.6  # +60% in HIGH_VOL (was 0.3)
+        crisis_trade_cost = is_trade * (final_regime == 3).float() * 1.0   # +100% in CRISIS (was 0.5)
+        trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.25  # -25% in TRENDING (was 0.2)
 
         # 5. WRONG DIRECTION PENALTY (amplify losses)
         wrong_direction = (position * final_returns < 0).float()
-        wrong_penalty = wrong_direction * 0.3  # 30% of vol extra penalty
+        wrong_penalty = wrong_direction * 0.5  # 50% of vol extra penalty (was 0.3)
 
         # === COMBINE (all terms relative to volatility) ===
         # HOLD in TRENDING: -0.5 (bad)
@@ -472,20 +474,20 @@ class PPOTrainer:
             is_hold = (actions == 0).float()
             is_trade = (actions != 0).float()
 
-            # Variance-normalized reward (same as training)
+            # Variance-normalized reward (same as training - Session 8 values)
             batch_vol = torch.std(final_returns) + 1e-6
             trade_pnl = final_returns * position / batch_vol
 
-            trending_hold_cost = is_hold * (final_regime == 1).float() * 0.5
-            lowvol_hold_cost = is_hold * (final_regime == 0).float() * 0.0
+            trending_hold_cost = is_hold * (final_regime == 1).float() * 0.8
+            lowvol_hold_cost = is_hold * (final_regime == 0).float() * 0.1
 
-            base_trade_cost = is_trade * 0.1
-            highvol_trade_cost = is_trade * (final_regime == 2).float() * 0.3
-            crisis_trade_cost = is_trade * (final_regime == 3).float() * 0.5
-            trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.2
+            base_trade_cost = is_trade * 0.15
+            highvol_trade_cost = is_trade * (final_regime == 2).float() * 0.6
+            crisis_trade_cost = is_trade * (final_regime == 3).float() * 1.0
+            trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.25
 
             wrong_direction = (position * final_returns < 0).float()
-            wrong_penalty = wrong_direction * 0.3
+            wrong_penalty = wrong_direction * 0.5
 
             hold_cost = trending_hold_cost + lowvol_hold_cost
             trade_cost = base_trade_cost + highvol_trade_cost + crisis_trade_cost - trending_trade_bonus
