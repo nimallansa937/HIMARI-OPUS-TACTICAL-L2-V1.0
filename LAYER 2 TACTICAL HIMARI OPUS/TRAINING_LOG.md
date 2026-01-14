@@ -454,14 +454,40 @@ This document logs all training experiments conducted for the HIMARI Layer 2 Tra
 
 ---
 
-### Experiment 10b: Forced SHORT Exposure (PENDING)
+### Experiment 10b: Forced SHORT Exposure via Balance Penalty
 
+**Date:** 2026-01-14  
 **Changes from Exp 10:**
 
-- Add **balance penalty** for action imbalance
-- Minimum 20% SHORT target
+- balance_target_short = 0.20 (20% SHORT target)
+- balance_penalty = 0.0003 (0.03% base penalty)
+- balance_window = 100 bars
 
-**Status:** ⏳ Pending implementation
+**Validation Results (to 315k steps):**
+
+| Step | Sharpe | Return | Trades | LONG % | SHORT % |
+|------|--------|--------|--------|--------|---------|
+| 20k | 1.28 | +37.5% | 55 | 99.2% | 0.0% |
+| 40k | 1.29 | +45.1% | 13 | 99.8% | 0.1% |
+| 61k | 1.29 | +43.9% | 21 | 99.7% | 0.1% |
+| **120k** | **1.40** | **+46.8%** | 19 | 99.7% | 0.1% |
+| 141k | 1.26 | +46.4% | 1 | 100.0% | 0.0% |
+| 180k | 1.27 | +39.9% | 41 | 99.4% | **0.5%** |
+| 260k | 1.29 | +13.4% | 190 | 92.7% | 0.2% |
+| 301k | 1.22 | +38.2% | 43 | 99.4% | 0.0% |
+
+**Result:** ❌ **FAILED - Balance penalty too weak**
+
+- Best Sharpe: **1.40 @ 120k steps** (saved as checkpoint)
+- Balance penalty briefly worked at 180k (0.5% SHORT) and 260k (7.1% FLAT)
+- Model always reverted to 99-100% LONG
+- Core issue: 2024-2026 BTC was bullish → LONG is optimal strategy
+
+**Conclusion:**
+The model correctly learned that "buy and hold" is optimal for this bull market.
+To force SHORT learning, need to include **bearish data (2022)** in training.
+
+**Best Checkpoint:** `output/exp10/checkpoint_120832_best.pt` (Sharpe 1.40)
 
 ---
 
