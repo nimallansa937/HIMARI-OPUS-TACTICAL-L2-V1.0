@@ -28,7 +28,7 @@ import time
 # Configuration
 # =============================================================================
 
-GDRIVE_FILE_ID = "1Ee0AFIh-v3xAcGxkn-K_R6Haap9pKciL"
+GDRIVE_FILE_ID = "1DpJAViY1YK_czC3Tfi3R0oXvPg-9Eo87"
 DATASET_PATH = "/workspace/btc_1h_2020_2024_enriched_44f.pkl"
 CHECKPOINT_DIR = "/workspace/checkpoints"
 CONTEXT_LEN = 100
