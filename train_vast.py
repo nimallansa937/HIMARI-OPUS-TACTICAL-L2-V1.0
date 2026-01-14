@@ -5,51 +5,24 @@ Downloads dataset from Google Drive and trains regime-conditioned policy.
 
 Usage:
     python train_vast.py
+
+Dataset Format (array-based pickle):
+    {
+        'train': {'features_raw', 'features_denoised', 'regime_ids', 'prices', 'returns', 'n_samples'},
+        'val': {...},
+        'test': {...},
+        'metadata': {...}
+    }
 """
 
 import os
-import sys
-from types import ModuleType
-from dataclasses import dataclass
-import numpy as np
-
-# =============================================================================
-# Stub classes for pickle compatibility - MUST BE BEFORE OTHER IMPORTS
-# =============================================================================
-# The dataset was pickled with src.pipeline classes - we need stubs to load it
-
-# Create stub dataclass FIRST
-@dataclass
-class EnrichedSample:
-    """Stub class for loading pickled EnrichedSample objects."""
-    timestamp: object  # pd.Timestamp but we don't import pandas yet
-    features_raw: np.ndarray
-    features_denoised: np.ndarray
-    regime_id: int
-    regime_confidence: float
-    price: float
-    returns: float
-
-# Create fake module hierarchy and register BEFORE pickle import
-_src = ModuleType('src')
-_src_pipeline = ModuleType('src.pipeline')
-_src_pipeline_dataset_generator = ModuleType('src.pipeline.dataset_generator')
-_src_pipeline_dataset_generator.EnrichedSample = EnrichedSample
-
-sys.modules['src'] = _src
-sys.modules['src.pipeline'] = _src_pipeline
-sys.modules['src.pipeline.dataset_generator'] = _src_pipeline_dataset_generator
-_src.pipeline = _src_pipeline
-_src_pipeline.dataset_generator = _src_pipeline_dataset_generator
-
-# NOW import the rest
 import pickle
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-from typing import Dict, List
+from typing import Dict
 import time
-import pandas as pd
 
 # =============================================================================
 # Configuration
@@ -114,53 +87,61 @@ def download_dataset():
 # =============================================================================
 
 def load_enriched_dataset(path: str):
-    """Load enriched dataset from pickle file."""
+    """Load enriched dataset from pickle file (array-based format)."""
     with open(path, 'rb') as f:
         data = pickle.load(f)
+    # Returns dict with 'train', 'val', 'test' as dicts of arrays, plus 'metadata'
     return data['train'], data['val'], data['test'], data['metadata']
 
 
 class EnrichedTradingDataset(Dataset):
-    """PyTorch Dataset for enriched trading samples with context windows."""
+    """PyTorch Dataset for enriched trading data with context windows.
+
+    Expects array-based format:
+        data_dict = {
+            'features_raw': np.ndarray (n, feature_dim),
+            'features_denoised': np.ndarray (n, feature_dim),
+            'regime_ids': np.ndarray (n,),
+            'regime_confidences': np.ndarray (n,),
+            'prices': np.ndarray (n,),
+            'returns': np.ndarray (n,),
+            'n_samples': int
+        }
+    """
 
     def __init__(
         self,
-        samples: List,
+        data_dict: Dict,
         context_len: int = 100,
         use_denoised: bool = True,
         normalize: bool = True
     ):
-        self.samples = samples
         self.context_len = context_len
-        self.use_denoised = use_denoised
+        self.n_samples = data_dict['n_samples']
 
-        if len(samples) <= context_len:
-            raise ValueError(f"Not enough samples ({len(samples)}) for context_len ({context_len})")
+        if self.n_samples <= context_len:
+            raise ValueError(f"Not enough samples ({self.n_samples}) for context_len ({context_len})")
 
-        # Pre-extract arrays
-        n = len(samples)
-        sample0 = samples[0]
-
+        # Load arrays directly from dict
         if use_denoised:
-            self.feature_dim = len(sample0.features_denoised)
-            self.features_arr = np.array([s.features_denoised for s in samples], dtype=np.float32)
+            self.features_arr = data_dict['features_denoised'].astype(np.float32)
         else:
-            self.feature_dim = len(sample0.features_raw)
-            self.features_arr = np.array([s.features_raw for s in samples], dtype=np.float32)
+            self.features_arr = data_dict['features_raw'].astype(np.float32)
 
-        self.regime_ids_arr = np.array([s.regime_id for s in samples], dtype=np.int64)
-        self.regime_confs_arr = np.array([s.regime_confidence for s in samples], dtype=np.float32)
-        self.prices_arr = np.array([s.price for s in samples], dtype=np.float32)
-        self.returns_arr = np.array([s.returns for s in samples], dtype=np.float32)
+        self.feature_dim = self.features_arr.shape[1]
+        self.regime_ids_arr = data_dict['regime_ids'].astype(np.int64)
+        self.regime_confs_arr = data_dict['regime_confidences'].astype(np.float32)
+        self.prices_arr = data_dict['prices'].astype(np.float32)
+        self.returns_arr = data_dict['returns'].astype(np.float32)
 
-        # Normalize
+        # Normalize features
         if normalize:
             self.feature_mean = self.features_arr.mean(axis=0)
             self.feature_std = self.features_arr.std(axis=0) + 1e-8
             self.features_arr = (self.features_arr - self.feature_mean) / self.feature_std
 
     def __len__(self):
-        return len(self.samples) - self.context_len
+        return self.n_samples - self.context_len
 
     def __getitem__(self, idx):
         end_idx = idx + self.context_len
@@ -547,20 +528,20 @@ def main():
 
     # Load data
     print("\nLoading dataset...")
-    train_samples, val_samples, test_samples, metadata = load_enriched_dataset(DATASET_PATH)
+    train_data, val_data, test_data, metadata = load_enriched_dataset(DATASET_PATH)
 
-    print(f"  Train: {len(train_samples)} samples")
-    print(f"  Val:   {len(val_samples)} samples")
-    print(f"  Test:  {len(test_samples)} samples")
+    print(f"  Train: {train_data['n_samples']} samples")
+    print(f"  Val:   {val_data['n_samples']} samples")
+    print(f"  Test:  {test_data['n_samples']} samples")
     print(f"  Features: {metadata['feature_dim']}")
     print(f"\nRegime Distribution:")
     for regime, pct in metadata['regime_distribution'].items():
         print(f"  {regime}: {pct*100:.1f}%")
 
     # Create datasets
-    train_dataset = EnrichedTradingDataset(train_samples, context_len=CONTEXT_LEN)
-    val_dataset = EnrichedTradingDataset(val_samples, context_len=CONTEXT_LEN)
-    test_dataset = EnrichedTradingDataset(test_samples, context_len=CONTEXT_LEN)
+    train_dataset = EnrichedTradingDataset(train_data, context_len=CONTEXT_LEN)
+    val_dataset = EnrichedTradingDataset(val_data, context_len=CONTEXT_LEN)
+    test_dataset = EnrichedTradingDataset(test_data, context_len=CONTEXT_LEN)
 
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
                               num_workers=4, pin_memory=True)
