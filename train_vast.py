@@ -352,37 +352,21 @@ class PPOTrainer:
         is_hold = (actions == 0).float()
         is_trade = (actions != 0).float()
 
-        # === SIMPLE REWARD WITH CARRY COST ===
-        # Key insight from research: Over-engineered rewards cause collapse
-        # Simple approach: PnL + carry cost + minimal regime modifiers
+        # === SIMPLEST REWARD: PNL + COST ===
+        # HOLD: Gets 0 reward (neutral)
+        # Trade: Gets PnL - cost (can be positive or negative)
+        # The cost makes HOLD attractive when expected PnL is near zero
 
-        # 1. Trade PnL: return * position (core reward)
+        # Trade PnL: return * position
         trade_pnl = final_returns * position * 100
 
-        # 2. CARRY COST: Penalize holding positions (prevents "always trade")
-        # Must be significant enough to compete with trade PnL variance
-        carry_cost = is_trade * 0.02
+        # Trade cost: per-trade cost (makes HOLD better for small expected moves)
+        trade_cost = is_trade * 0.03
 
-        # 3. SIMPLE REGIME MODIFIERS (minimal, not dominant)
-        # Only penalize clearly wrong behavior, don't over-reward
-
-        # TRENDING (regime 1): Small bonus for trading (capture moves)
-        trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.01
-
-        # HIGH_VOL (regime 2): Small bonus for HOLD (avoid whipsaws)
-        high_vol_hold_bonus = is_hold * (final_regime == 2).float() * 0.01
-
-        # CRISIS (regime 3): Moderate bonus for HOLD (capital preservation)
-        crisis_hold_bonus = is_hold * (final_regime == 3).float() * 0.02
-
-        # === COMBINE (SIMPLE) ===
-        rewards = (
-            trade_pnl
-            - carry_cost
-            + trending_trade_bonus
-            + high_vol_hold_bonus
-            + crisis_hold_bonus
-        )
+        # === COMBINE ===
+        # HOLD: reward = 0 (baseline)
+        # Trade: reward = PnL - cost
+        rewards = trade_pnl - trade_cost
 
         # Compute advantages
         with torch.no_grad():
@@ -456,17 +440,11 @@ class PPOTrainer:
             is_hold = (actions == 0).float()
             is_trade = (actions != 0).float()
 
-            # Simple rewards with carry cost
+            # Simplest reward: PnL + cost
             trade_pnl = final_returns * position * 100
-            carry_cost = is_trade * 0.02
+            trade_cost = is_trade * 0.03
 
-            # Minimal regime modifiers
-            trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.01
-            high_vol_hold_bonus = is_hold * (final_regime == 2).float() * 0.01
-            crisis_hold_bonus = is_hold * (final_regime == 3).float() * 0.02
-
-            rewards = (trade_pnl - carry_cost +
-                      trending_trade_bonus + high_vol_hold_bonus + crisis_hold_bonus)
+            rewards = trade_pnl - trade_cost
 
             total_reward += rewards.sum().item()
             total_samples += len(rewards)
