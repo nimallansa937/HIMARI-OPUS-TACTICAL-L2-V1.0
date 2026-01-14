@@ -8,13 +8,41 @@ Usage:
 """
 
 import os
+import sys
 import pickle
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from typing import Dict, List
+from dataclasses import dataclass
 import time
+import pandas as pd
+
+# =============================================================================
+# Stub classes for pickle compatibility
+# =============================================================================
+# The dataset was pickled with src.pipeline classes - we need stubs to load it
+
+@dataclass
+class EnrichedSample:
+    """Stub class for loading pickled EnrichedSample objects."""
+    timestamp: pd.Timestamp
+    features_raw: np.ndarray
+    features_denoised: np.ndarray
+    regime_id: int
+    regime_confidence: float
+    price: float
+    returns: float
+
+# Register the stub in sys.modules so pickle can find it
+class _StubModule:
+    EnrichedSample = EnrichedSample
+
+# Create fake module hierarchy
+sys.modules['src'] = type(sys)('src')
+sys.modules['src.pipeline'] = type(sys)('src.pipeline')
+sys.modules['src.pipeline.dataset_generator'] = _StubModule()
 
 # =============================================================================
 # Configuration
