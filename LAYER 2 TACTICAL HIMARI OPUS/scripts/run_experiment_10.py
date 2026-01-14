@@ -149,9 +149,13 @@ class Experiment10Trainer:
             state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
             
             with torch.no_grad():
-                action_logits, value = self.model(state_tensor)
-                probs = torch.softmax(action_logits / 0.5, dim=-1)  # Temperature sampling
-                dist = torch.distributions.Categorical(probs)
+                output = self.model(state_tensor)
+                probs = output["probs"]
+                value = output["value"]
+                # Temperature sampling
+                logits = torch.log(probs + 1e-8) / 0.5
+                probs_temp = torch.softmax(logits, dim=-1)
+                dist = torch.distributions.Categorical(probs_temp)
                 action = dist.sample()
                 log_prob = dist.log_prob(action)
             
@@ -245,13 +249,11 @@ class Experiment10Trainer:
                 mb_returns = returns_t[mb_indices]
                 mb_advantages = advantages_t[mb_indices]
                 
-                # Forward pass
-                action_logits, values = self.model(mb_states)
-                probs = torch.softmax(action_logits, dim=-1)
-                dist = torch.distributions.Categorical(probs)
+                # Forward pass - use evaluate_actions method
+                new_log_probs, values, entropy_batch = self.model.evaluate_actions(mb_states, mb_actions)
+                entropy = entropy_batch.mean()
                 
-                new_log_probs = dist.log_prob(mb_actions)
-                entropy = dist.entropy().mean()
+
                 
                 # PPO clipped objective
                 ratio = torch.exp(new_log_probs - mb_old_log_probs)
@@ -312,14 +314,16 @@ class Experiment10Trainer:
             state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
             
             with torch.no_grad():
-                action_logits, _ = self.model(state_tensor)
+                output = self.model(state_tensor)
+                probs = output["probs"]
                 
                 if use_temperature:
-                    probs = torch.softmax(action_logits / 0.5, dim=-1)
-                    dist = torch.distributions.Categorical(probs)
+                    logits = torch.log(probs + 1e-8) / 0.5
+                    probs_temp = torch.softmax(logits, dim=-1)
+                    dist = torch.distributions.Categorical(probs_temp)
                     action = dist.sample().item()
                 else:
-                    action = action_logits.argmax(dim=-1).item()
+                    action = probs.argmax(dim=-1).item()
             
             next_state, market_return, done, _ = self.val_env.step(action)
             
