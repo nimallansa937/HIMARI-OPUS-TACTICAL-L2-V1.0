@@ -368,7 +368,7 @@ class PPOTrainer:
         #    LOW_VOL: Medium cost (some opportunity)
         #    HIGH_VOL/CRISIS: Low cost (preservation is valuable)
         trending_hold_cost = is_hold * (final_regime == 1).float() * 0.5   # 50% of vol
-        lowvol_hold_cost = is_hold * (final_regime == 0).float() * 0.2     # 20% of vol
+        lowvol_hold_cost = is_hold * (final_regime == 0).float() * 0.0     # 0% - neutral in LOW_VOL
         # HIGH_VOL/CRISIS: No hold cost (HOLD is neutral-to-good)
 
         # 4. REGIME-SPECIFIC TRADE COST (relative to volatility)
@@ -477,7 +477,7 @@ class PPOTrainer:
             trade_pnl = final_returns * position / batch_vol
 
             trending_hold_cost = is_hold * (final_regime == 1).float() * 0.5
-            lowvol_hold_cost = is_hold * (final_regime == 0).float() * 0.2
+            lowvol_hold_cost = is_hold * (final_regime == 0).float() * 0.0
 
             base_trade_cost = is_trade * 0.1
             highvol_trade_cost = is_trade * (final_regime == 2).float() * 0.3
