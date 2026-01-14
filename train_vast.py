@@ -352,35 +352,53 @@ class PPOTrainer:
         is_hold = (actions == 0).float()
         is_trade = (actions != 0).float()
 
-        # === OPPORTUNITY COST REWARD ===
-        # Key insight: HOLD should have NEGATIVE reward in TRENDING (missed opportunity)
-        # and ZERO reward in risky regimes (preservation is neutral, not rewarded)
+        # === VARIANCE-NORMALIZED REWARD (Based on FR-LUX research) ===
+        # Key insight: Penalties must scale with REALIZED VOLATILITY, not fixed constants
+        # A 0.10 penalty is meaningless when PnL swings ±3%
 
-        # 1. BASE PNL for trades (scaled)
-        trade_pnl = final_returns * position * 100
+        # 1. Compute batch volatility (proxy for realized vol)
+        batch_vol = torch.std(final_returns) + 1e-6  # Avoid div by zero
 
-        # 2. HOLD PENALTY in TRENDING - you're missing out!
-        #    If market moved +2%, holding cost you that opportunity
-        trending_hold_penalty = is_hold * (final_regime == 1).float() * torch.abs(final_returns) * 50
+        # 2. BASE PNL for trades - normalized by volatility
+        #    This makes rewards comparable across different vol regimes
+        trade_pnl = final_returns * position / batch_vol  # Normalized PnL
 
-        # 3. TRADE COST - minimal, just transaction cost
-        trade_cost = is_trade * 0.02
+        # 3. REGIME-SPECIFIC HOLD COST (relative to volatility)
+        #    TRENDING: High opportunity cost (you're missing moves)
+        #    LOW_VOL: Medium cost (some opportunity)
+        #    HIGH_VOL/CRISIS: Low cost (preservation is valuable)
+        trending_hold_cost = is_hold * (final_regime == 1).float() * 0.5   # 50% of vol
+        lowvol_hold_cost = is_hold * (final_regime == 0).float() * 0.2     # 20% of vol
+        # HIGH_VOL/CRISIS: No hold cost (HOLD is neutral-to-good)
 
-        # 4. WRONG DIRECTION PENALTY - amplify losses
-        #    If you went LONG and market went down, extra penalty
+        # 4. REGIME-SPECIFIC TRADE COST (relative to volatility)
+        #    TRENDING: Low cost (trading encouraged)
+        #    LOW_VOL: Medium cost
+        #    HIGH_VOL: High cost (risky to trade)
+        #    CRISIS: Very high cost (very risky)
+        base_trade_cost = is_trade * 0.1  # 10% of vol baseline
+        highvol_trade_cost = is_trade * (final_regime == 2).float() * 0.3  # +30% in HIGH_VOL
+        crisis_trade_cost = is_trade * (final_regime == 3).float() * 0.5   # +50% in CRISIS
+        trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.2  # -20% in TRENDING
+
+        # 5. WRONG DIRECTION PENALTY (amplify losses)
         wrong_direction = (position * final_returns < 0).float()
-        wrong_penalty = wrong_direction * torch.abs(final_returns) * 30
+        wrong_penalty = wrong_direction * 0.3  # 30% of vol extra penalty
 
-        # 5. RISKY REGIME WRONG PENALTY - even worse in HIGH_VOL/CRISIS
-        risky_regime = ((final_regime == 2) | (final_regime == 3)).float()
-        risky_wrong_penalty = wrong_direction * risky_regime * torch.abs(final_returns) * 20
+        # === COMBINE (all terms relative to volatility) ===
+        # HOLD in TRENDING: -0.5 (bad)
+        # HOLD in LOW_VOL: -0.2 (slight cost)
+        # HOLD in HIGH_VOL/CRISIS: 0 (neutral - no bonus, no penalty!)
+        # Trade in TRENDING: PnL/vol - 0.1 + 0.2 = PnL/vol + 0.1 (encouraged)
+        # Trade in LOW_VOL: PnL/vol - 0.1 (neutral)
+        # Trade in HIGH_VOL: PnL/vol - 0.1 - 0.3 = PnL/vol - 0.4 (discouraged)
+        # Trade in CRISIS: PnL/vol - 0.1 - 0.5 = PnL/vol - 0.6 (heavily discouraged)
+        # Wrong trade: additional -0.3
 
-        # === COMBINE ===
-        # HOLD in TRENDING: reward = -|return| * 50 (missed opportunity)
-        # HOLD in other regimes: reward = 0 (neutral - no bonus!)
-        # Correct trade: reward = PnL * 100 - 0.02
-        # Wrong trade: reward = PnL * 100 - 0.02 - |return| * 30 - (risky * |return| * 20)
-        rewards = trade_pnl - trade_cost - trending_hold_penalty - wrong_penalty - risky_wrong_penalty
+        hold_cost = trending_hold_cost + lowvol_hold_cost
+        trade_cost = base_trade_cost + highvol_trade_cost + crisis_trade_cost - trending_trade_bonus
+
+        rewards = trade_pnl - hold_cost - trade_cost - wrong_penalty
 
         # Compute advantages
         with torch.no_grad():
@@ -454,16 +472,25 @@ class PPOTrainer:
             is_hold = (actions == 0).float()
             is_trade = (actions != 0).float()
 
-            # Opportunity cost reward (same as training)
-            trade_pnl = final_returns * position * 100
-            trending_hold_penalty = is_hold * (final_regime == 1).float() * torch.abs(final_returns) * 50
-            trade_cost = is_trade * 0.02
-            wrong_direction = (position * final_returns < 0).float()
-            wrong_penalty = wrong_direction * torch.abs(final_returns) * 30
-            risky_regime = ((final_regime == 2) | (final_regime == 3)).float()
-            risky_wrong_penalty = wrong_direction * risky_regime * torch.abs(final_returns) * 20
+            # Variance-normalized reward (same as training)
+            batch_vol = torch.std(final_returns) + 1e-6
+            trade_pnl = final_returns * position / batch_vol
 
-            rewards = trade_pnl - trade_cost - trending_hold_penalty - wrong_penalty - risky_wrong_penalty
+            trending_hold_cost = is_hold * (final_regime == 1).float() * 0.5
+            lowvol_hold_cost = is_hold * (final_regime == 0).float() * 0.2
+
+            base_trade_cost = is_trade * 0.1
+            highvol_trade_cost = is_trade * (final_regime == 2).float() * 0.3
+            crisis_trade_cost = is_trade * (final_regime == 3).float() * 0.5
+            trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.2
+
+            wrong_direction = (position * final_returns < 0).float()
+            wrong_penalty = wrong_direction * 0.3
+
+            hold_cost = trending_hold_cost + lowvol_hold_cost
+            trade_cost = base_trade_cost + highvol_trade_cost + crisis_trade_cost - trending_trade_bonus
+
+            rewards = trade_pnl - hold_cost - trade_cost - wrong_penalty
 
             total_reward += rewards.sum().item()
             total_samples += len(rewards)
