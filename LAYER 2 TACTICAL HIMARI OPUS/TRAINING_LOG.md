@@ -412,7 +412,7 @@ This document logs all training experiments conducted for the HIMARI Layer 2 Tra
 
 ---
 
-### Experiment 10: PPO with Anti-Overtrading on 1H Data (IN PROGRESS)
+### Experiment 10: PPO with Anti-Overtrading on 1H Data
 
 **Date:** 2026-01-14  
 **Data:** BTC 1-hour, Jan 2024 - Jan 2026 (17,713 bars)  
@@ -426,19 +426,45 @@ This document logs all training experiments conducted for the HIMARI Layer 2 Tra
 | NEW: Persistence | N/A | **0.005% bonus/bar** |
 | NEW: Min Hold | N/A | **2 hours, 0.01% penalty** |
 
-**Anti-Overtrading Features:**
+**Training Metrics (500k steps):**
 
-1. **Trade Cooldown Penalty:** 0.02% penalty for trading within 4 bars of last trade
-2. **Action Persistence Bonus:** 0.005% bonus for maintaining same action
-3. **Early Exit Penalty:** 0.01% penalty for exiting before 2-bar minimum hold
+| Step | Value Loss | Entropy | KL | Status |
+|------|------------|---------|-------|--------|
+| 4k | 5.12 | 0.94 | 0.03 | Starting |
+| 50k | 1.65 | 0.25 | 0.05 | Learning |
+| 100k | 0.52 | 0.01-0.05 | 0.01 | ⚠️ Entropy low |
+| 200k | 0.24 | 0.08-0.22 | 0.02-0.05 | Recovering |
+| 300k | 0.21 | 0.02-0.27 | 0.01-0.06 | Oscillating |
+| 400k | 0.20 | 0.10-0.40 | 0.01-0.10 | Stabilizing |
+| 500k | 0.18 | 0.06-0.26 | 0.01 | Converged |
 
-**Hypothesis:** Combining Exp7 entropy settings + Exp9 carry cost + anti-overtrading on cleaner 1H data should:
+**Observations:**
 
-- Reduce trade count significantly (target: <5,000 trades)
-- Maintain Exp9's balanced 50/50 LONG/SHORT
-- Generalize better to unseen regimes
+1. ✅ **Value Loss excellent:** 5.12 → 0.18 (96% reduction)
+2. ⚠️ **Entropy unstable:** Oscillated between 0.01-0.60, sometimes near collapse
+3. ⚠️ **KL constraint active:** Frequent early stopping of PPO epochs
+4. ❌ **Validation bug:** Never triggered (fixed in subsequent push)
+5. ❌ **No checkpoints saved:** Due to validation bug (fixed)
 
-**Status:** ⏳ Pending Vast.ai training
+**Comparison to Previous Experiments:**
+
+| Metric | Exp 7 (5m) | Exp 9 (5m) | Exp 10 (1h) |
+|--------|------------|------------|-------------|
+| Final VL | ~0.8 | ~0.3 | **0.18** ✅ |
+| Entropy Pattern | Stable 0.35-0.55 | Dropped to 0.16 | Oscillating 0.01-0.40 |
+| Collapse | No | Near end | ⚠️ Possible |
+| Data Period | 2020-2024 | 2020-2024 | **2024-2026** |
+
+**Analysis:**
+
+- Value loss is **best ever** (0.18 vs 0.3 in Exp9)
+- Entropy is **more unstable** than Exp7/9 - may indicate:
+  - 1H data has different dynamics than 5m
+  - Anti-overtrading penalties creating conflicting gradients
+  - Model finding local optima more easily on cleaner data
+- Need validation metrics (Sharpe, trades, action distribution) to judge properly
+
+**Status:** ⚠️ Completed training, needs re-run with fixed validation/checkpoint code
 
 ---
 
