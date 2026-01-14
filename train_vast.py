@@ -316,17 +316,63 @@ class PPOTrainer:
         actions = dist.sample()
         log_probs = dist.log_prob(actions)
 
-        # Compute simple reward based on returns and action
+        # Compute regime-aware reward
         # Action: 0=HOLD, 1=LONG, 2=SHORT
+        # Regime: 0=LOW_VOL, 1=TRENDING, 2=HIGH_VOL, 3=CRISIS
         final_returns = returns_data[:, -1]  # Last timestep return
+        final_regime = regime_ids[:, -1]  # Current regime
 
-        # Reward = return * position
+        # Position: 1 for LONG, -1 for SHORT, 0 for HOLD
         position = (actions == 1).float() - (actions == 2).float()
-        rewards = final_returns * position * 100  # Scale up
 
-        # Add small penalty for trading
-        trade_penalty = (actions != 0).float() * 0.01
-        rewards = rewards - trade_penalty
+        # Base reward = return * position (scaled)
+        base_reward = final_returns * position * 100
+
+        # === HOLD INCENTIVES ===
+        is_hold = (actions == 0).float()
+        is_trade = (actions != 0).float()
+
+        # 1. HOLD bonus in LOW_VOL (regime 0) - ranging market, avoid overtrading
+        low_vol_hold_bonus = is_hold * (final_regime == 0).float() * 0.05
+
+        # 2. HOLD bonus in HIGH_VOL (regime 2) - choppy, hard to predict
+        high_vol_hold_bonus = is_hold * (final_regime == 2).float() * 0.08
+
+        # 3. HOLD bonus in CRISIS (regime 3) - extreme risk
+        crisis_hold_bonus = is_hold * (final_regime == 3).float() * 0.10
+
+        # 4. HOLD is good when returns are near zero (no clear direction)
+        small_return_threshold = 0.001
+        near_zero_returns = (torch.abs(final_returns) < small_return_threshold).float()
+        hold_when_flat_bonus = is_hold * near_zero_returns * 0.03
+
+        # === TRADING PENALTIES ===
+        # 5. Trading cost
+        trade_cost = is_trade * 0.02
+
+        # 6. Wrong direction penalty (went LONG but return was negative, or vice versa)
+        wrong_direction = is_trade * (final_returns * position < 0).float()
+        wrong_direction_penalty = wrong_direction * 0.05
+
+        # 7. Trading in HIGH_VOL/CRISIS penalty (extra risk)
+        risky_regime_trade = is_trade * ((final_regime == 2) | (final_regime == 3)).float()
+        risky_trade_penalty = risky_regime_trade * 0.03
+
+        # === TRADING BONUSES ===
+        # 8. Correct direction in TRENDING regime (regime 1) - reward good trend following
+        correct_trend_trade = is_trade * (final_regime == 1).float() * (final_returns * position > 0).float()
+        trend_bonus = correct_trend_trade * 0.05
+
+        # Combine rewards
+        rewards = (base_reward
+                  + low_vol_hold_bonus
+                  + high_vol_hold_bonus
+                  + crisis_hold_bonus
+                  + hold_when_flat_bonus
+                  + trend_bonus
+                  - trade_cost
+                  - wrong_direction_penalty
+                  - risky_trade_penalty)
 
         # Compute advantages
         with torch.no_grad():
@@ -377,11 +423,12 @@ class PPOTrainer:
 
     @torch.no_grad()
     def evaluate(self, dataloader):
-        """Evaluate policy."""
+        """Evaluate policy with regime-aware rewards."""
         self.policy.eval()
         total_reward = 0
         total_samples = 0
         action_counts = {0: 0, 1: 0, 2: 0}
+        regime_action_counts = {r: {0: 0, 1: 0, 2: 0} for r in range(4)}
 
         for batch in dataloader:
             features = batch['features'].to(self.device)
@@ -390,16 +437,55 @@ class PPOTrainer:
 
             actions, _, _ = self.policy.get_action(features, regime_ids, deterministic=True)
 
-            # Compute rewards
+            # Compute regime-aware rewards (same as training)
             final_returns = returns_data[:, -1]
+            final_regime = regime_ids[:, -1]
+
             position = (actions == 1).float() - (actions == 2).float()
-            rewards = final_returns * position * 100
+            base_reward = final_returns * position * 100
+
+            is_hold = (actions == 0).float()
+            is_trade = (actions != 0).float()
+
+            # HOLD bonuses
+            low_vol_hold_bonus = is_hold * (final_regime == 0).float() * 0.05
+            high_vol_hold_bonus = is_hold * (final_regime == 2).float() * 0.08
+            crisis_hold_bonus = is_hold * (final_regime == 3).float() * 0.10
+            near_zero_returns = (torch.abs(final_returns) < 0.001).float()
+            hold_when_flat_bonus = is_hold * near_zero_returns * 0.03
+
+            # Trading penalties/bonuses
+            trade_cost = is_trade * 0.02
+            wrong_direction = is_trade * (final_returns * position < 0).float()
+            wrong_direction_penalty = wrong_direction * 0.05
+            risky_regime_trade = is_trade * ((final_regime == 2) | (final_regime == 3)).float()
+            risky_trade_penalty = risky_regime_trade * 0.03
+            correct_trend_trade = is_trade * (final_regime == 1).float() * (final_returns * position > 0).float()
+            trend_bonus = correct_trend_trade * 0.05
+
+            rewards = (base_reward + low_vol_hold_bonus + high_vol_hold_bonus +
+                      crisis_hold_bonus + hold_when_flat_bonus + trend_bonus -
+                      trade_cost - wrong_direction_penalty - risky_trade_penalty)
 
             total_reward += rewards.sum().item()
             total_samples += len(rewards)
 
-            for a in actions.cpu().numpy():
+            # Track actions per regime
+            for a, r in zip(actions.cpu().numpy(), final_regime.cpu().numpy()):
                 action_counts[a] += 1
+                regime_action_counts[r][a] += 1
+
+        # Compute per-regime action distribution
+        regime_action_dist = {}
+        regime_names = {0: 'LOW_VOL', 1: 'TRENDING', 2: 'HIGH_VOL', 3: 'CRISIS'}
+        for r in range(4):
+            total_r = sum(regime_action_counts[r].values())
+            if total_r > 0:
+                regime_action_dist[regime_names[r]] = {
+                    'HOLD': regime_action_counts[r][0] / total_r,
+                    'LONG': regime_action_counts[r][1] / total_r,
+                    'SHORT': regime_action_counts[r][2] / total_r
+                }
 
         return {
             'mean_reward': total_reward / total_samples,
@@ -407,7 +493,8 @@ class PPOTrainer:
                 'HOLD': action_counts[0] / total_samples,
                 'LONG': action_counts[1] / total_samples,
                 'SHORT': action_counts[2] / total_samples
-            }
+            },
+            'regime_actions': regime_action_dist
         }
 
 
@@ -516,7 +603,11 @@ def main():
         # Print action distribution every 10 epochs
         if (epoch + 1) % 10 == 0:
             ad = val_metrics['action_distribution']
-            print(f"         Actions: HOLD={ad['HOLD']:.1%} LONG={ad['LONG']:.1%} SHORT={ad['SHORT']:.1%}")
+            print(f"         Overall: HOLD={ad['HOLD']:.1%} LONG={ad['LONG']:.1%} SHORT={ad['SHORT']:.1%}")
+            # Print per-regime actions
+            if 'regime_actions' in val_metrics:
+                for regime, actions in val_metrics['regime_actions'].items():
+                    print(f"         {regime:8s}: HOLD={actions['HOLD']:.1%} LONG={actions['LONG']:.1%} SHORT={actions['SHORT']:.1%}")
 
     total_time = time.time() - start_time
     print("=" * 70)
@@ -532,9 +623,14 @@ def main():
     test_metrics = trainer.evaluate(test_loader)
 
     print(f"Mean Reward: {test_metrics['mean_reward']:.4f}")
-    print(f"Action Distribution:")
+    print(f"\nOverall Action Distribution:")
     for action, pct in test_metrics['action_distribution'].items():
         print(f"  {action}: {pct:.1%}")
+
+    print(f"\nPer-Regime Action Distribution:")
+    if 'regime_actions' in test_metrics:
+        for regime, actions in test_metrics['regime_actions'].items():
+            print(f"  {regime:8s}: HOLD={actions['HOLD']:.1%} LONG={actions['LONG']:.1%} SHORT={actions['SHORT']:.1%}")
 
     # Save final checkpoint
     checkpoint = {
