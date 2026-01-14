@@ -344,45 +344,51 @@ class PPOTrainer:
         is_hold = (actions == 0).float()
         is_trade = (actions != 0).float()
 
-        # === NEW APPROACH: OPPORTUNITY COST ===
-        # HOLD has a NEGATIVE baseline (opportunity cost) - you MISS potential gains
-        # Only HIGH_VOL/CRISIS can offset this with safety bonuses
-        # This forces the model to trade unless there's a good reason not to
+        # === DYNAMIC HOLD REWARD ===
+        # HOLD reward depends on absolute return magnitude:
+        # - Small |return| = HOLD was correct (avoided noise) = positive reward
+        # - Large |return| = HOLD missed opportunity = negative reward
+        # This makes HOLD a legitimate choice when market is uncertain
 
-        # HOLD baseline: NEGATIVE (opportunity cost of not trading)
-        hold_opportunity_cost = is_hold * (-0.03)
+        abs_returns = torch.abs(final_returns)
+        return_threshold = 0.003  # ~0.3% threshold
 
-        # Trade PnL: return * position (scaled up to make trading attractive)
-        trade_pnl = final_returns * position * 150
+        # HOLD: reward for small moves, penalize for big moves
+        # When |return| < threshold: reward = +0.02
+        # When |return| > threshold: penalty proportional to missed move
+        hold_correct = (abs_returns < return_threshold).float() * 0.04
+        hold_missed = (abs_returns >= return_threshold).float() * abs_returns * 50
+        hold_reward = is_hold * (hold_correct - hold_missed)
+
+        # Trade PnL: return * position (moderate scaling)
+        trade_pnl = final_returns * position * 100
 
         # === REGIME-SPECIFIC MODIFIERS ===
 
-        # LOW_VOL (regime 0): Neutral - small opportunity cost offset
-        # Net for HOLD: -0.03 + 0.01 = -0.02 (slight pressure to trade)
-        low_vol_hold_offset = is_hold * (final_regime == 0).float() * 0.01
+        # LOW_VOL (regime 0): HOLD threshold is higher (more tolerant)
+        # Small moves are common, so HOLD is more often correct
+        low_vol_hold_bonus = is_hold * (final_regime == 0).float() * 0.02
 
-        # TRENDING (regime 1): Penalize HOLD heavily, reward trading
-        # Net for HOLD: -0.03 - 0.05 = -0.08 (strong pressure to trade)
-        trending_hold_penalty = is_hold * (final_regime == 1).float() * 0.05
-        trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.03
+        # TRENDING (regime 1): Lower HOLD threshold, favor trading
+        # Big moves are expected, so HOLD is penalized more
+        trending_hold_penalty = is_hold * (final_regime == 1).float() * 0.03
+        trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.02
 
-        # HIGH_VOL (regime 2): Offset opportunity cost, make HOLD viable
-        # Net for HOLD: -0.03 + 0.04 = +0.01 (slight preference for HOLD)
+        # HIGH_VOL (regime 2): Higher HOLD threshold (choppy = HOLD is safer)
         high_vol_hold_bonus = is_hold * (final_regime == 2).float() * 0.04
         high_vol_trade_penalty = is_trade * (final_regime == 2).float() * 0.02
 
-        # CRISIS (regime 3): Strongly offset opportunity cost
-        # Net for HOLD: -0.03 + 0.06 = +0.03 (strong preference for HOLD)
+        # CRISIS (regime 3): Strongly favor HOLD (capital preservation)
         crisis_hold_bonus = is_hold * (final_regime == 3).float() * 0.06
         crisis_trade_penalty = is_trade * (final_regime == 3).float() * 0.03
 
         # === COMBINE ===
         rewards = (
-            # Base: opportunity cost for HOLD, PnL for trades
-            hold_opportunity_cost + trade_pnl
-            # LOW_VOL: small offset
-            + low_vol_hold_offset
-            # TRENDING: penalize HOLD, reward trades
+            # Base: dynamic HOLD reward OR trade PnL
+            hold_reward + trade_pnl
+            # LOW_VOL: favor HOLD
+            + low_vol_hold_bonus
+            # TRENDING: favor trading
             - trending_hold_penalty + trending_trade_bonus
             # HIGH_VOL: favor HOLD
             + high_vol_hold_bonus - high_vol_trade_penalty
@@ -462,21 +468,25 @@ class PPOTrainer:
             is_hold = (actions == 0).float()
             is_trade = (actions != 0).float()
 
-            # Base rewards (opportunity cost approach)
-            hold_opportunity_cost = is_hold * (-0.03)
-            trade_pnl = final_returns * position * 150
+            # Base rewards (dynamic HOLD approach)
+            abs_returns = torch.abs(final_returns)
+            return_threshold = 0.003
+            hold_correct = (abs_returns < return_threshold).float() * 0.04
+            hold_missed = (abs_returns >= return_threshold).float() * abs_returns * 50
+            hold_reward = is_hold * (hold_correct - hold_missed)
+            trade_pnl = final_returns * position * 100
 
             # Regime modifiers
-            low_vol_hold_offset = is_hold * (final_regime == 0).float() * 0.01
-            trending_hold_penalty = is_hold * (final_regime == 1).float() * 0.05
-            trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.03
+            low_vol_hold_bonus = is_hold * (final_regime == 0).float() * 0.02
+            trending_hold_penalty = is_hold * (final_regime == 1).float() * 0.03
+            trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.02
             high_vol_hold_bonus = is_hold * (final_regime == 2).float() * 0.04
             high_vol_trade_penalty = is_trade * (final_regime == 2).float() * 0.02
             crisis_hold_bonus = is_hold * (final_regime == 3).float() * 0.06
             crisis_trade_penalty = is_trade * (final_regime == 3).float() * 0.03
 
-            rewards = (hold_opportunity_cost + trade_pnl +
-                      low_vol_hold_offset - trending_hold_penalty + trending_trade_bonus +
+            rewards = (hold_reward + trade_pnl +
+                      low_vol_hold_bonus - trending_hold_penalty + trending_trade_bonus +
                       high_vol_hold_bonus - high_vol_trade_penalty +
                       crisis_hold_bonus - crisis_trade_penalty)
 
