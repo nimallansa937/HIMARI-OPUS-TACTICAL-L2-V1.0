@@ -360,8 +360,8 @@ class PPOTrainer:
         trade_pnl = final_returns * position * 100
 
         # 2. CARRY COST: Penalize holding positions (prevents "always trade")
-        # ~0.002% per bar, makes HOLD attractive during low-conviction
-        carry_cost = is_trade * 0.002
+        # Must be significant enough to compete with trade PnL variance
+        carry_cost = is_trade * 0.02
 
         # 3. SIMPLE REGIME MODIFIERS (minimal, not dominant)
         # Only penalize clearly wrong behavior, don't over-reward
@@ -458,7 +458,7 @@ class PPOTrainer:
 
             # Simple rewards with carry cost
             trade_pnl = final_returns * position * 100
-            carry_cost = is_trade * 0.002
+            carry_cost = is_trade * 0.02
 
             # Minimal regime modifiers
             trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.01
