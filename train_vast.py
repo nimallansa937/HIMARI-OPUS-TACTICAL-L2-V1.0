@@ -344,51 +344,50 @@ class PPOTrainer:
         is_hold = (actions == 0).float()
         is_trade = (actions != 0).float()
 
-        # === KEY INSIGHT ===
-        # The model needs a BASELINE reward for HOLD that competes with trading
-        # Without this, any trading strategy dominates because it has variance
+        # === NEW APPROACH: OPPORTUNITY COST ===
+        # HOLD has a NEGATIVE baseline (opportunity cost) - you MISS potential gains
+        # Only HIGH_VOL/CRISIS can offset this with safety bonuses
+        # This forces the model to trade unless there's a good reason not to
 
-        # Base HOLD reward - small positive baseline for all holds
-        hold_baseline = is_hold * 0.02
+        # HOLD baseline: NEGATIVE (opportunity cost of not trading)
+        hold_opportunity_cost = is_hold * (-0.03)
 
-        # Base trade reward = return * position (scaled)
-        trade_pnl = final_returns * position * 100
+        # Trade PnL: return * position (scaled up to make trading attractive)
+        trade_pnl = final_returns * position * 150
 
         # === REGIME-SPECIFIC MODIFIERS ===
 
-        # LOW_VOL (regime 0): Slightly favor HOLD (ranging market)
-        low_vol_hold_bonus = is_hold * (final_regime == 0).float() * 0.03
-        low_vol_trade_penalty = is_trade * (final_regime == 0).float() * 0.02
+        # LOW_VOL (regime 0): Neutral - small opportunity cost offset
+        # Net for HOLD: -0.03 + 0.01 = -0.02 (slight pressure to trade)
+        low_vol_hold_offset = is_hold * (final_regime == 0).float() * 0.01
 
-        # TRENDING (regime 1): Favor correct trades
-        trending_correct_bonus = is_trade * (final_regime == 1).float() * (final_returns * position > 0).float() * 0.08
-        trending_wrong_penalty = is_trade * (final_regime == 1).float() * (final_returns * position < 0).float() * 0.04
+        # TRENDING (regime 1): Penalize HOLD heavily, reward trading
+        # Net for HOLD: -0.03 - 0.05 = -0.08 (strong pressure to trade)
+        trending_hold_penalty = is_hold * (final_regime == 1).float() * 0.05
+        trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.03
 
-        # HIGH_VOL (regime 2): Strongly favor HOLD (choppy, unpredictable)
-        high_vol_hold_bonus = is_hold * (final_regime == 2).float() * 0.05
-        high_vol_trade_penalty = is_trade * (final_regime == 2).float() * 0.04
+        # HIGH_VOL (regime 2): Offset opportunity cost, make HOLD viable
+        # Net for HOLD: -0.03 + 0.04 = +0.01 (slight preference for HOLD)
+        high_vol_hold_bonus = is_hold * (final_regime == 2).float() * 0.04
+        high_vol_trade_penalty = is_trade * (final_regime == 2).float() * 0.02
 
-        # CRISIS (regime 3): Very strongly favor HOLD (extreme risk)
-        crisis_hold_bonus = is_hold * (final_regime == 3).float() * 0.08
-        crisis_trade_penalty = is_trade * (final_regime == 3).float() * 0.06
-
-        # === UNIVERSAL TRADE COST ===
-        trade_cost = is_trade * 0.015
+        # CRISIS (regime 3): Strongly offset opportunity cost
+        # Net for HOLD: -0.03 + 0.06 = +0.03 (strong preference for HOLD)
+        crisis_hold_bonus = is_hold * (final_regime == 3).float() * 0.06
+        crisis_trade_penalty = is_trade * (final_regime == 3).float() * 0.03
 
         # === COMBINE ===
         rewards = (
-            # Base rewards
-            hold_baseline + trade_pnl
-            # LOW_VOL modifiers
-            + low_vol_hold_bonus - low_vol_trade_penalty
-            # TRENDING modifiers
-            + trending_correct_bonus - trending_wrong_penalty
-            # HIGH_VOL modifiers
+            # Base: opportunity cost for HOLD, PnL for trades
+            hold_opportunity_cost + trade_pnl
+            # LOW_VOL: small offset
+            + low_vol_hold_offset
+            # TRENDING: penalize HOLD, reward trades
+            - trending_hold_penalty + trending_trade_bonus
+            # HIGH_VOL: favor HOLD
             + high_vol_hold_bonus - high_vol_trade_penalty
-            # CRISIS modifiers
+            # CRISIS: strongly favor HOLD
             + crisis_hold_bonus - crisis_trade_penalty
-            # Universal cost
-            - trade_cost
         )
 
         # Compute advantages
@@ -463,26 +462,23 @@ class PPOTrainer:
             is_hold = (actions == 0).float()
             is_trade = (actions != 0).float()
 
-            # Base rewards
-            hold_baseline = is_hold * 0.02
-            trade_pnl = final_returns * position * 100
+            # Base rewards (opportunity cost approach)
+            hold_opportunity_cost = is_hold * (-0.03)
+            trade_pnl = final_returns * position * 150
 
             # Regime modifiers
-            low_vol_hold_bonus = is_hold * (final_regime == 0).float() * 0.03
-            low_vol_trade_penalty = is_trade * (final_regime == 0).float() * 0.02
-            trending_correct_bonus = is_trade * (final_regime == 1).float() * (final_returns * position > 0).float() * 0.08
-            trending_wrong_penalty = is_trade * (final_regime == 1).float() * (final_returns * position < 0).float() * 0.04
-            high_vol_hold_bonus = is_hold * (final_regime == 2).float() * 0.05
-            high_vol_trade_penalty = is_trade * (final_regime == 2).float() * 0.04
-            crisis_hold_bonus = is_hold * (final_regime == 3).float() * 0.08
-            crisis_trade_penalty = is_trade * (final_regime == 3).float() * 0.06
-            trade_cost = is_trade * 0.015
+            low_vol_hold_offset = is_hold * (final_regime == 0).float() * 0.01
+            trending_hold_penalty = is_hold * (final_regime == 1).float() * 0.05
+            trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.03
+            high_vol_hold_bonus = is_hold * (final_regime == 2).float() * 0.04
+            high_vol_trade_penalty = is_trade * (final_regime == 2).float() * 0.02
+            crisis_hold_bonus = is_hold * (final_regime == 3).float() * 0.06
+            crisis_trade_penalty = is_trade * (final_regime == 3).float() * 0.03
 
-            rewards = (hold_baseline + trade_pnl +
-                      low_vol_hold_bonus - low_vol_trade_penalty +
-                      trending_correct_bonus - trending_wrong_penalty +
+            rewards = (hold_opportunity_cost + trade_pnl +
+                      low_vol_hold_offset - trending_hold_penalty + trending_trade_bonus +
                       high_vol_hold_bonus - high_vol_trade_penalty +
-                      crisis_hold_bonus - crisis_trade_penalty - trade_cost)
+                      crisis_hold_bonus - crisis_trade_penalty)
 
             total_reward += rewards.sum().item()
             total_samples += len(rewards)
