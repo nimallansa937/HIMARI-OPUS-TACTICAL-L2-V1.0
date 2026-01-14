@@ -412,6 +412,36 @@ This document logs all training experiments conducted for the HIMARI Layer 2 Tra
 
 ---
 
+### Experiment 10: PPO with Anti-Overtrading on 1H Data (IN PROGRESS)
+
+**Date:** 2026-01-14  
+**Data:** BTC 1-hour, Jan 2024 - Jan 2026 (17,713 bars)  
+**Changes from Exp 9:**
+
+| Setting | Experiment 9 (5m) | Experiment 10 (1h) |
+|---------|-------------------|-------------------|
+| Data | 5-min, 2020-2024 | **1-hour, 2024-2026** |
+| Carry Cost | 0.00005/bar | 0.000004/bar (scaled) |
+| NEW: Cooldown | N/A | **4 hours, 0.02% penalty** |
+| NEW: Persistence | N/A | **0.005% bonus/bar** |
+| NEW: Min Hold | N/A | **2 hours, 0.01% penalty** |
+
+**Anti-Overtrading Features:**
+
+1. **Trade Cooldown Penalty:** 0.02% penalty for trading within 4 bars of last trade
+2. **Action Persistence Bonus:** 0.005% bonus for maintaining same action
+3. **Early Exit Penalty:** 0.01% penalty for exiting before 2-bar minimum hold
+
+**Hypothesis:** Combining Exp7 entropy settings + Exp9 carry cost + anti-overtrading on cleaner 1H data should:
+
+- Reduce trade count significantly (target: <5,000 trades)
+- Maintain Exp9's balanced 50/50 LONG/SHORT
+- Generalize better to unseen regimes
+
+**Status:** ⏳ Pending Vast.ai training
+
+---
+
 ## Commands Archive
 
 ### Fresh Vast.ai Setup
