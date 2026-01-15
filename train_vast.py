@@ -352,49 +352,42 @@ class PPOTrainer:
         is_hold = (actions == 0).float()
         is_trade = (actions != 0).float()
 
-        # === VARIANCE-NORMALIZED REWARD (Based on FR-LUX research) ===
-        # Key insight: Penalties must scale with REALIZED VOLATILITY, not fixed constants
-        # A 0.10 penalty is meaningless when PnL swings ±3%
+        # === ADAPTIVE VARIANCE-NORMALIZED REWARD ===
+        # Key insight: Costs must scale with ACTUAL batch statistics, not hardcoded values
+        # This prevents overfitting to specific dataset characteristics
 
-        # 1. Compute batch volatility (proxy for realized vol)
-        batch_vol = torch.std(final_returns) + 1e-6  # Avoid div by zero
+        # 1. Compute batch volatility and normalize PnL
+        batch_vol = torch.std(final_returns) + 1e-6
+        norm_pnl = final_returns / batch_vol
+        trade_pnl = norm_pnl * position
 
-        # 2. BASE PNL for trades - normalized by volatility
-        #    This makes rewards comparable across different vol regimes
-        trade_pnl = final_returns * position / batch_vol  # Normalized PnL
+        # 2. ADAPTIVE: Expected |normalized PnL| for this batch
+        #    This automatically adapts to any market condition
+        expected_abs_pnl = torch.abs(norm_pnl).mean()
 
-        # 3. REGIME-SPECIFIC HOLD COST (relative to volatility)
-        #    Session 13: Calibrated based on local testing
-        #    TRENDING: High opportunity cost (forces trading)
-        #    LOW_VOL/HIGH_VOL/CRISIS: Free (HOLD is neutral-to-good)
-        trending_hold_cost = is_hold * (final_regime == 1).float() * 0.6   # 60% of vol
-        # All other regimes: No hold cost (HOLD is free)
+        # 3. COSTS as FRACTIONS of expected |PnL| (generalizes to any data)
+        #    These ratios encode RELATIVE preference, not absolute values
+        #    Tested locally: gives ~27% HOLD with correct regime ordering
 
-        # 4. REGIME-SPECIFIC TRADE COST (relative to volatility)
-        #    Session 13: Calibrated - expected |norm PnL| = 0.6
-        #    Costs must be < 0.6 for trading to be viable
-        #    TRENDING: Neutral (cost = bonus, trading viable)
-        #    LOW_VOL: Moderate cost
-        #    HIGH_VOL: High cost (risky)
-        #    CRISIS: Very high cost (very risky)
-        base_trade_cost = is_trade * 0.25  # 25% baseline
-        highvol_trade_cost = is_trade * (final_regime == 2).float() * 0.35  # +35% in HIGH_VOL
-        crisis_trade_cost = is_trade * (final_regime == 3).float() * 0.50   # +50% in CRISIS
-        trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.25  # -25% in TRENDING
+        # TRADE COSTS (fractions of expected |PnL|)
+        base_trade_cost = is_trade * 0.40 * expected_abs_pnl
+        highvol_trade_cost = is_trade * (final_regime == 2).float() * 0.40 * expected_abs_pnl
+        crisis_trade_cost = is_trade * (final_regime == 3).float() * 0.60 * expected_abs_pnl
+        trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.40 * expected_abs_pnl
 
-        # 5. WRONG DIRECTION PENALTY (amplify losses)
+        # HOLD COST (only in TRENDING - opportunity cost)
+        trending_hold_cost = is_hold * (final_regime == 1).float() * 1.0 * expected_abs_pnl
+
+        # WRONG DIRECTION PENALTY
         wrong_direction = (position * final_returns < 0).float()
-        wrong_penalty = wrong_direction * 0.3  # 30% of vol extra penalty
+        wrong_penalty = wrong_direction * 0.50 * expected_abs_pnl
 
-        # === COMBINE (all terms relative to volatility) ===
-        # Session 13 calibrated costs (expected |norm PnL| = 0.6):
-        # HOLD in TRENDING: -0.6 (bad - forces trading)
-        # HOLD in LOW_VOL/HIGH_VOL/CRISIS: 0 (neutral - no penalty)
-        # Trade in TRENDING: PnL/vol - 0.25 + 0.25 = PnL/vol (neutral cost)
-        # Trade in LOW_VOL: PnL/vol - 0.25 (some cost)
-        # Trade in HIGH_VOL: PnL/vol - 0.25 - 0.35 = PnL/vol - 0.60 (discouraged)
-        # Trade in CRISIS: PnL/vol - 0.25 - 0.50 = PnL/vol - 0.75 (heavily discouraged)
-        # Wrong trade: additional -0.30
+        # === COMBINE ===
+        # Effective costs per regime (as fraction of E[|PnL|]):
+        # TRENDING: trade=0.00 (0.40-0.40), hold=1.00 → Forces trading
+        # LOW_VOL:  trade=0.40, hold=0.00 → Mixed
+        # HIGH_VOL: trade=0.80 (0.40+0.40), hold=0.00 → Prefers HOLD
+        # CRISIS:   trade=1.00 (0.40+0.60), hold=0.00 → Strong HOLD preference
 
         hold_cost = trending_hold_cost
         trade_cost = base_trade_cost + highvol_trade_cost + crisis_trade_cost - trending_trade_bonus
@@ -474,18 +467,22 @@ class PPOTrainer:
             is_trade = (actions != 0).float()
 
             # Variance-normalized reward (Session 13 calibrated values)
+            # Adaptive variance-normalized reward (same as training)
             batch_vol = torch.std(final_returns) + 1e-6
-            trade_pnl = final_returns * position / batch_vol
+            norm_pnl = final_returns / batch_vol
+            trade_pnl = norm_pnl * position
 
-            trending_hold_cost = is_hold * (final_regime == 1).float() * 0.6
+            expected_abs_pnl = torch.abs(norm_pnl).mean()
 
-            base_trade_cost = is_trade * 0.25
-            highvol_trade_cost = is_trade * (final_regime == 2).float() * 0.35
-            crisis_trade_cost = is_trade * (final_regime == 3).float() * 0.50
-            trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.25
+            base_trade_cost = is_trade * 0.40 * expected_abs_pnl
+            highvol_trade_cost = is_trade * (final_regime == 2).float() * 0.40 * expected_abs_pnl
+            crisis_trade_cost = is_trade * (final_regime == 3).float() * 0.60 * expected_abs_pnl
+            trending_trade_bonus = is_trade * (final_regime == 1).float() * 0.40 * expected_abs_pnl
+
+            trending_hold_cost = is_hold * (final_regime == 1).float() * 1.0 * expected_abs_pnl
 
             wrong_direction = (position * final_returns < 0).float()
-            wrong_penalty = wrong_direction * 0.3
+            wrong_penalty = wrong_direction * 0.50 * expected_abs_pnl
 
             hold_cost = trending_hold_cost
             trade_cost = base_trade_cost + highvol_trade_cost + crisis_trade_cost - trending_trade_bonus
