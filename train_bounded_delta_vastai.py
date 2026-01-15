@@ -35,9 +35,9 @@ print("=" * 70)
 # =============================================================================
 
 class Config:
-    # Google Drive file IDs (user will update these)
-    GDRIVE_TRAIN_ID = "YOUR_TRAIN_FILE_ID"  # btc_1h_2020_2024.csv
-    GDRIVE_TEST_ID = "YOUR_TEST_FILE_ID"    # btc_1h_2025_2026.csv
+    # Google Drive file IDs
+    GDRIVE_TRAIN_ID = "1da3Vv2o6pAtuLkvF8N3zPp8OK6Dm3RCB"  # btc_1h_2020_2024.csv
+    GDRIVE_TEST_ID = "1w48veqVuVV70pH0CuNKGnLlIh7TQf26-"   # btc_1h_2025_2026.csv
 
     # Local paths (for Vast.ai)
     data_dir = "/workspace/data"
