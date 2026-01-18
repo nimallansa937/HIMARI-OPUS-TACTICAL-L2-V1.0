@@ -1,0 +1,28 @@
+{
+  "walk_forward": {
+    "status": "PASS",
+    "runtime": 382.2660987377167,
+    "avg_test_sharpe": -0.37665930089143157,
+    "is_oos_ratio": -2.7694086244997966,
+    "pct_profitable": 15.384615384615385,
+    "worst_dd": 2.3787989088385864
+  },
+  "monte_carlo": {
+    "status": "PASS",
+    "runtime": 13.739289283752441,
+    "prob_profit": 48.4,
+    "prob_positive_sharpe": 49.7,
+    "sharpe_5th": -1.6925440384858732,
+    "sharpe_95th": 1.5136323626024093,
+    "dd_95th": 16.4784209683176
+  },
+  "crisis_replay": {
+    "status": "PASS",
+    "runtime": 1.1107103824615479,
+    "n_scenarios": 5,
+    "avg_return": -13.922629949214947,
+    "avg_dd": 18.23441796305592,
+    "worst_dd": 26.802168308443786,
+    "survived_all": true
+  }
+}
