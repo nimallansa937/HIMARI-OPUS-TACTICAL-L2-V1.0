@@ -19,7 +19,8 @@
       "Bash(python scripts/launch_training.py:*)",
       "Bash(python:*)",
       "Bash(tar:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(ssh ubuntu@159.54.171.134 \"cat ~/HIMARI_OPUS_2/LAYER_2_V1/src/models/transformer_a2c.py | head -100\")"
     ]
   }
 }
