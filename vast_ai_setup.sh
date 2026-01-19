@@ -70,7 +70,7 @@ echo "  4. Edit this script and replace <YOUR_GOOGLE_DRIVE_FILE_ID>"
 echo ""
 
 # Replace with your Google Drive file ID
-GDRIVE_FILE_ID="<YOUR_GOOGLE_DRIVE_FILE_ID>"
+GDRIVE_FILE_ID="1da3Vv2o6pAtuLkvF8N3zPp8OK6Dm3RCB"
 
 if [ "$GDRIVE_FILE_ID" = "<YOUR_GOOGLE_DRIVE_FILE_ID>" ]; then
     echo "ERROR: Please edit vast_ai_setup.sh and set your Google Drive file ID"
