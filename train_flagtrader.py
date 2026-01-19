@@ -342,7 +342,7 @@ def main():
     # Calculate balanced class weights
     unique, counts = np.unique(train_labels, return_counts=True)
     total_samples = len(train_labels)
-    class_weights = torch.tensor([total_samples / (len(unique) * count) for count in counts])
+    class_weights = torch.tensor([total_samples / (len(unique) * count) for count in counts], dtype=torch.float32)
     class_weights = class_weights.to(device)
 
     logger.info(f"Class weights: SELL={class_weights[0]:.2f}, "
