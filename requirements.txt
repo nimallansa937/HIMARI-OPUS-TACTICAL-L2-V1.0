@@ -1,0 +1,25 @@
+# HIMARI FLAG-TRADER Requirements
+# Python 3.8+
+
+# Core ML frameworks
+torch>=2.0.0
+numpy>=1.23.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
+
+# Transformers & LoRA
+transformers>=4.30.0
+peft>=0.4.0
+
+# Logging
+loguru>=0.7.0
+
+# Data handling
+pickle5>=0.0.11
+
+# Google Drive download (for Vast.ai)
+gdown>=4.7.1
+
+# Optional: For advanced backtesting visualizations
+matplotlib>=3.7.0
+seaborn>=0.12.0
