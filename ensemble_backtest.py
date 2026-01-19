@@ -127,7 +127,7 @@ class EnsemblePipeline(EndToEndPipeline):
             raise ValueError(f"Unknown ensemble strategy: {self.ensemble_config.ensemble_strategy}")
 
     def _get_flagtrader_action(self, features: np.ndarray) -> Tuple[str, float]:
-        """Get FLAG-TRADER prediction with logit correction."""
+        """Get FLAG-TRADER prediction (no correction needed for retrained model)."""
         x = torch.from_numpy(features).float().unsqueeze(0).unsqueeze(0)
         x = x.to(self.device)
 
@@ -135,10 +135,8 @@ class EnsemblePipeline(EndToEndPipeline):
             logits = self.flag_trader_model(x)
             raw_logits = logits.squeeze()
 
-            # Logit bias correction (tuned)
-            logit_correction = torch.tensor([3.0, -2.5, 1.0], device=self.device)
-            adjusted_logits = raw_logits + logit_correction
-            probs = torch.softmax(adjusted_logits, dim=-1)
+            # No logit correction needed - model trained with balanced weights
+            probs = torch.softmax(raw_logits, dim=-1)
             action_idx = torch.argmax(probs).item()
             confidence = probs[action_idx].item()
 
@@ -279,8 +277,25 @@ def main():
     # Save results
     import json
     output_path = f"ensemble_backtest_{config.ensemble_strategy}.json"
+
+    def convert_to_json_serializable(obj):
+        """Convert numpy types to Python types for JSON serialization."""
+        import numpy as np
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, dict):
+            return {k: convert_to_json_serializable(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_to_json_serializable(item) for item in obj]
+        else:
+            return obj
+
     with open(output_path, 'w') as f:
-        json.dump(pipeline.convert_to_json_serializable(result.__dict__), f, indent=2)
+        json.dump(convert_to_json_serializable(result.__dict__), f, indent=2)
 
     logger.info(f"\nResults saved to {output_path}")
 
