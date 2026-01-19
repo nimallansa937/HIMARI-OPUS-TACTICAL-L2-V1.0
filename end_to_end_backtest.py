@@ -204,7 +204,11 @@ class EndToEndPipeline:
                     FLAGTRADERModel = flag_trader_module.FLAGTRADERModel
 
                     # Analyze checkpoint to determine dimensions
-                    state_dict = checkpoint['model']
+                    # Handle both old format ('model') and new format ('model_state_dict')
+                    if 'model_state_dict' in checkpoint:
+                        state_dict = checkpoint['model_state_dict']
+                    else:
+                        state_dict = checkpoint['model']
 
                     # Detect d_model from action_head
                     action_head_shape = state_dict['action_head.weight'].shape

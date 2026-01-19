@@ -339,13 +339,21 @@ def main():
 
     logger.info(f"Train samples: {n_train}, Val samples: {n_val}")
 
-    # Calculate balanced class weights
+    # Calculate balanced class weights using SQRT for gentler correction
+    # Previous aggressive weights caused SELL bias: [2.03, 0.51, 1.83]
+    # Sqrt weights provide gentler balancing: [1.42, 0.71, 1.35]
     unique, counts = np.unique(train_labels, return_counts=True)
     total_samples = len(train_labels)
-    class_weights = torch.tensor([total_samples / (len(unique) * count) for count in counts], dtype=torch.float32)
+
+    # Use sqrt of inverse frequency for gentler reweighting
+    inverse_freq = torch.tensor([total_samples / (len(unique) * count) for count in counts], dtype=torch.float32)
+    class_weights = torch.sqrt(inverse_freq)
     class_weights = class_weights.to(device)
 
-    logger.info(f"Class weights: SELL={class_weights[0]:.2f}, "
+    logger.info(f"Class distribution: SELL={counts[0]} ({counts[0]/total_samples*100:.1f}%), "
+               f"HOLD={counts[1]} ({counts[1]/total_samples*100:.1f}%), "
+               f"BUY={counts[2]} ({counts[2]/total_samples*100:.1f}%)")
+    logger.info(f"Class weights (sqrt): SELL={class_weights[0]:.2f}, "
                f"HOLD={class_weights[1]:.2f}, BUY={class_weights[2]:.2f}")
 
     # Create datasets
