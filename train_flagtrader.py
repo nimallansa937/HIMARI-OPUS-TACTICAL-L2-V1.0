@@ -69,8 +69,12 @@ def load_data(data_path: str) -> Tuple[np.ndarray, np.ndarray]:
     # Compute basic technical indicators (44 features)
     features = compute_features(ohlcv)
 
-    # Generate labels (simple momentum strategy)
-    labels = generate_labels(df['close'].values)
+    # Generate labels using improved Sharpe-based approach with stop-loss
+    labels = generate_labels(
+        close=df['close'].values,
+        high=df['high'].values,
+        low=df['low'].values
+    )
 
     # Pad to 60D
     if features.shape[1] < 60:
@@ -185,27 +189,72 @@ def compute_rsi(close: np.ndarray, period: int = 14) -> np.ndarray:
     return rsi
 
 
-def generate_labels(close: np.ndarray, threshold: float = 0.01) -> np.ndarray:
+def generate_labels(close: np.ndarray, high: np.ndarray = None, low: np.ndarray = None,
+                   threshold: float = 0.01) -> np.ndarray:
     """
-    Generate trading labels based on future returns.
+    Generate trading labels based on risk-adjusted forward returns (Sharpe ratio).
+
+    This improved labeling approach addresses the flaws in simple threshold-based labels:
+    - Uses Sharpe ratio to measure risk-adjusted returns
+    - Longer lookahead window (24h) to filter noise
+    - Higher return threshold (2%) for more actionable signals
+    - Considers drawdown via high/low prices for stop-loss logic
 
     Args:
         close: Close prices
-        threshold: Return threshold for BUY/SELL signals
+        high: High prices (optional, for stop-loss logic)
+        low: Low prices (optional, for stop-loss logic)
+        threshold: Minimum return threshold for signals (default 2%)
 
     Returns:
         labels: 0=SELL, 1=HOLD, 2=BUY
     """
-    # Look ahead 6 hours (reduced from 24 to increase signal frequency)
-    lookahead = 6
+    # Parameters (stricter than before for higher quality signals)
+    lookahead_window = 24  # 24-hour window for Sharpe calculation
+    sharpe_threshold = 1.0  # Minimum Sharpe for BUY/SELL (increased from 0.5)
+    return_threshold = 0.03  # 3% minimum return (increased from 2%)
+    stop_loss_pct = 0.025  # 2.5% stop-loss threshold (tighter)
 
-    future_returns = np.zeros_like(close)
-    future_returns[:-lookahead] = (close[lookahead:] - close[:-lookahead]) / close[:-lookahead]
-
-    # Generate labels
     labels = np.ones(len(close), dtype=np.int64)  # Default: HOLD
-    labels[future_returns > threshold] = 2  # BUY
-    labels[future_returns < -threshold] = 0  # SELL
+
+    for t in range(len(close) - lookahead_window):
+        # Calculate forward returns over the window
+        future_prices = close[t+1:t+lookahead_window+1]
+        returns = (future_prices - close[t]) / close[t]
+
+        # Calculate Sharpe ratio (risk-adjusted return)
+        mean_return = returns.mean()
+        std_return = returns.std()
+        sharpe = mean_return / (std_return + 1e-8)
+
+        # Check stop-loss condition if high/low provided
+        stop_loss_triggered = False
+        if high is not None and low is not None:
+            future_high = high[t+1:t+lookahead_window+1]
+            future_low = low[t+1:t+lookahead_window+1]
+            max_drawdown = (close[t] - future_low.min()) / close[t]
+            max_runup = (future_high.max() - close[t]) / close[t]
+
+            # If potential drawdown > stop_loss, don't BUY
+            if max_drawdown > stop_loss_pct:
+                stop_loss_triggered = True
+
+        # Final return (end of window)
+        final_return = returns[-1]
+
+        # Generate label based on Sharpe + return threshold + stop-loss
+        if sharpe > sharpe_threshold and final_return > return_threshold and not stop_loss_triggered:
+            # Positive risk-adjusted return with sufficient magnitude
+            labels[t] = 2  # BUY
+        elif sharpe < -sharpe_threshold and final_return < -return_threshold:
+            # Negative risk-adjusted return with sufficient magnitude
+            labels[t] = 0  # SELL
+        else:
+            # Insufficient risk-adjusted signal or too risky
+            labels[t] = 1  # HOLD
+
+    # Fill remaining samples with HOLD (not enough future data)
+    labels[-lookahead_window:] = 1
 
     return labels
 
