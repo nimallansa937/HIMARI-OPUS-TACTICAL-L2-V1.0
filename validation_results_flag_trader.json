@@ -1,0 +1,74 @@
+{
+  "cpcv_passed": 0,
+  "cpcv_mean_sharpe": 0.15423411708290713,
+  "cpcv_std_sharpe": 1.7687345936307177,
+  "cpcv_worst_sharpe": -1.9541646445768772,
+  "cpcv_deflated_sharpe": 0.15386852644661184,
+  "cpcv_details": {
+    "passed": 0,
+    "mean_sharpe": 0.15423411708290713,
+    "std_sharpe": 1.7687345936307177,
+    "worst_sharpe": -1.9541646445768772,
+    "deflated_sharpe": 0.15386852644661184,
+    "n_folds_profitable": 2,
+    "n_folds_total": 5,
+    "fold_results": [
+      {
+        "fold_id": 0,
+        "train_size": 7247,
+        "test_size": 1814,
+        "sharpe": -1.025066470093606,
+        "max_drawdown": -0.02676343602037736,
+        "win_rate": 0.5060639470782801
+      },
+      {
+        "fold_id": 1,
+        "train_size": 7223,
+        "test_size": 1814,
+        "sharpe": 2.6454118178499653,
+        "max_drawdown": -0.013752021016372906,
+        "win_rate": 0.4966923925027563
+      },
+      {
+        "fold_id": 2,
+        "train_size": 7223,
+        "test_size": 1814,
+        "sharpe": 1.8336712357245966,
+        "max_drawdown": -0.011373864791186204,
+        "win_rate": 0.5110253583241455
+      },
+      {
+        "fold_id": 3,
+        "train_size": 7223,
+        "test_size": 1814,
+        "sharpe": -0.7286813534895429,
+        "max_drawdown": -0.021114744656351492,
+        "win_rate": 0.49889746416758546
+      },
+      {
+        "fold_id": 4,
+        "train_size": 7232,
+        "test_size": 1814,
+        "sharpe": -1.9541646445768772,
+        "max_drawdown": -0.02891749079584143,
+        "win_rate": 0.5044101433296582
+      }
+    ],
+    "reason": "FAIL: Did not meet thresholds"
+  },
+  "permutation_passed": 0,
+  "permutation_p_value": 0.51,
+  "permutation_details": {
+    "passed": 0,
+    "p_value": 0.51,
+    "observed_sharpe": 0.06258824452075881,
+    "null_mean": 0.06258824452075881,
+    "null_std": 1.7649905623108453e-16,
+    "percentile": 0.06258824452075908,
+    "reason": "p=0.5100 >= 0.05"
+  },
+  "validation_passed": 0,
+  "validation_summary": "[FAIL] VALIDATION FAILED - CPCV thresholds not met, Not statistically significant",
+  "n_samples": 9073,
+  "date_range": "2025-01-01 to 2026-01-14"
+}

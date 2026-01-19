@@ -1,0 +1,24 @@
+EKF Denoiser Calibration Log
+==================================================
+
+Date: 2026-01-15T07:32:17.384311
+
+Best Configuration:
+  process_noise (Q): 0.001
+  measurement_noise (R): 0.1
+
+Training Metrics:
+  smoothness_improvement: 2.255734335522351
+  lag_bars: 0
+  signal_correlation: 0.9999720758376196
+  same_direction_ratio: 0.7545213737668981
+  noise_reduction: 1.4406798172745887
+  trend_correlation: 0.9994830307555284
+
+Test Metrics:
+  smoothness_improvement: 2.269188025318811
+  lag_bars: 0
+  signal_correlation: 0.999747847556779
+  same_direction_ratio: 0.769349164467898
+  noise_reduction: 1.4346800233228658
+  trend_correlation: 0.9951805595371672

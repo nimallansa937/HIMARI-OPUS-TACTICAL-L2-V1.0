@@ -1,0 +1,25 @@
+HIMARI Layer 2 Risk Manager Calibration
+Date: 2026-01-15 08:44:26.920464
+============================================================
+
+H1: EVT + GPD Tail Risk
+  xi (shape): 0.2357
+  sigma (scale): 0.0064
+  threshold: 1.40%
+  VaR_99: 6.73%
+  ES_99: 9.21%
+
+H2: Kelly Criterion
+  kelly_fraction: 0.0%
+  win_rate: 47.8%
+  payoff_ratio: 1.10
+
+H3: Volatility Targeting
+  target_vol: 28.5%
+  annual_vol: 65.7%
+
+H4: Drawdown Brake
+  thresholds: [0.03, 0.06, 0.1]
+  reductions: [0.3, 0.6, 0.95]
+
+H5-H8: Using defaults

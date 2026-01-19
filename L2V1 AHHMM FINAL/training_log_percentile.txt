@@ -1,0 +1,16 @@
+Student-T AHHMM PERCENTILE Training Log
+==================================================
+
+Training Date: 2026-01-15T07:14:01.439206
+Lookback Window: 500
+N Features: 6
+
+Training Accuracy: 59.9%
+Test Accuracy: 63.4%
+Generalization Gap: 3.5%
+
+Per-Regime Test Accuracy:
+  LOW_VOL: 80.4%
+  TRENDING: 59.3%
+  HIGH_VOL: 22.7%
+  CRISIS: 82.5%

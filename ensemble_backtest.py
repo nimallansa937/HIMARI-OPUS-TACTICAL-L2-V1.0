@@ -127,7 +127,7 @@ class EnsemblePipeline(EndToEndPipeline):
             raise ValueError(f"Unknown ensemble strategy: {self.ensemble_config.ensemble_strategy}")
 
     def _get_flagtrader_action(self, features: np.ndarray) -> Tuple[str, float]:
-        """Get FLAG-TRADER prediction with calibration correction."""
+        """Get FLAG-TRADER prediction (sqrt-weighted training, no calibration needed)."""
         x = torch.from_numpy(features).float().unsqueeze(0).unsqueeze(0)
         x = x.to(self.device)
 
@@ -135,11 +135,8 @@ class EnsemblePipeline(EndToEndPipeline):
             logits = self.flag_trader_model(x)
             raw_logits = logits.squeeze()
 
-            # Calibration: model is heavily biased toward SELL due to aggressive class weights
-            # Apply inverse correction to balance predictions
-            logit_correction = torch.tensor([-4.0, +1.5, +2.5], device=self.device)
-            adjusted_logits = raw_logits + logit_correction
-            probs = torch.softmax(adjusted_logits, dim=-1)
+            # No calibration needed - sqrt-weighted training provides balanced predictions
+            probs = torch.softmax(raw_logits, dim=-1)
             action_idx = torch.argmax(probs).item()
             confidence = probs[action_idx].item()
 

@@ -1,0 +1,18 @@
+Student-T AHHMM SUPERVISED Training Log
+==================================================
+
+Training Date: 2026-01-15T07:10:54.977393
+Training Data: C:\Users\chari\OneDrive\Documents\BTC DATA SETS\btc_1h_2020_2024.csv
+Test Data: C:\Users\chari\OneDrive\Documents\BTC DATA SETS\btc_1h_2025_2026.csv
+N States: 4
+Student-t df: 5.0
+N Features: 7
+
+Training Accuracy: 88.1%
+Test Accuracy: 61.5%
+
+Per-Regime Test Accuracy:
+  LOW_VOL: 99.4%
+  TRENDING: 47.7%
+  HIGH_VOL: 11.8%
+  CRISIS: 17.1%
