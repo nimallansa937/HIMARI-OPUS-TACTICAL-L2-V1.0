@@ -43,13 +43,13 @@ echo ""
 
 # Clone repository
 echo "Step 3: Cloning HIMARI repository..."
-if [ -d "HIMARI-TESTING-SUITE" ]; then
+if [ -d "HIMARI-OPUS-TACTICAL-L2-V1.0" ]; then
     echo "Repository already exists, pulling latest changes..."
-    cd HIMARI-TESTING-SUITE
+    cd HIMARI-OPUS-TACTICAL-L2-V1.0
     git pull
 else
-    git clone https://github.com/nimallansa937/HIMARI-TESTING-SUITE.git
-    cd HIMARI-TESTING-SUITE
+    git clone https://github.com/nimallansa937/HIMARI-OPUS-TACTICAL-L2-V1.0.git
+    cd HIMARI-OPUS-TACTICAL-L2-V1.0
 fi
 echo "✓ Repository cloned"
 echo ""
@@ -143,7 +143,7 @@ echo ""
 echo "To download the checkpoint from Vast.ai:"
 echo "  1. Right-click on 'checkpoints/flag_trader_best.pt' in the file browser"
 echo "  2. Click 'Download'"
-echo "  3. Or use SCP: scp -P PORT root@HOST:~/HIMARI-TESTING-SUITE/checkpoints/flag_trader_best.pt ."
+echo "  3. Or use SCP: scp -P PORT root@HOST:~/HIMARI-OPUS-TACTICAL-L2-V1.0/checkpoints/flag_trader_best.pt ."
 echo ""
 echo "To run backtest on the trained model:"
 echo "  python ensemble_backtest.py --confidence_threshold 0.7"

@@ -29,7 +29,7 @@ python ensemble_backtest.py --confidence_threshold 0.7 --strategy voting
 **Single command to run on your Vast.ai instance:**
 
 ```bash
-wget https://raw.githubusercontent.com/nimallansa937/HIMARI-TESTING-SUITE/main/vast_ai_setup.sh && bash vast_ai_setup.sh
+wget https://raw.githubusercontent.com/nimallansa937/HIMARI-OPUS-TACTICAL-L2-V1.0/main/vast_ai_setup.sh && bash vast_ai_setup.sh
 ```
 
 This will:
@@ -224,7 +224,7 @@ gdown --id <YOUR_GOOGLE_DRIVE_FILE_ID> -O data/btc_1h_2020_2024.csv
 ### Run Training
 
 ```bash
-wget https://raw.githubusercontent.com/nimallansa937/HIMARI-TESTING-SUITE/main/vast_ai_setup.sh && bash vast_ai_setup.sh
+wget https://raw.githubusercontent.com/nimallansa937/HIMARI-OPUS-TACTICAL-L2-V1.0/main/vast_ai_setup.sh && bash vast_ai_setup.sh
 ```
 
 Training takes approximately 2-4 hours on RTX 3090.
@@ -310,7 +310,7 @@ model = FLAGTRADERModel(
   title={HIMARI FLAG-TRADER: Large Language Model for Trading},
   author={Your Name},
   year={2026},
-  url={https://github.com/nimallansa937/HIMARI-TESTING-SUITE}
+  url={https://github.com/nimallansa937/HIMARI-OPUS-TACTICAL-L2-V1.0}
 }
 ```
 
